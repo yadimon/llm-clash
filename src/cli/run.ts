@@ -1,4 +1,27 @@
 #!/usr/bin/env node
+// ---------------------------------------------------------------------------
+// llm-clash CLI entrypoint.
+//
+// Three usage modes (subcommands):
+//
+//   1. DEFAULT (positional):
+//        llm-clash <model-spec> [<model-spec>...] "<task>"
+//      Last positional is the task; everything before it is a list of
+//      model specs (see `./modelSpec.ts` for the spec syntax).
+//
+//   2. `refine` subcommand — same thing but with explicit flags:
+//        llm-clash refine --task "..." --models openai:gpt-4.1 anthropic:opus
+//
+//   3. `run` subcommand — load everything from a YAML file:
+//        llm-clash run config.yaml
+//      The YAML file mirrors `RunConfig` and lets you describe each model
+//      either as a spec string OR as a fully detailed `CliModelConfig`
+//      object (custom command, custom HTTP base URL, etc.).
+//
+// All three modes funnel into `runMultiDraftRefinement` from the core
+// orchestrator, then print the aggregated scores and the final answer.
+// ---------------------------------------------------------------------------
+
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -11,6 +34,17 @@ import { runMultiDraftRefinement } from "../core/orchestrator.js";
 import type { FinalMode, ModelAdapter, RunConfig, RunEvent } from "../core/types.js";
 import { adapterFromSpec, type ModelSpecOptions } from "./modelSpec.js";
 
+/**
+ * Per-model object inside a YAML config file.
+ *
+ * If `command` is set (or `type === "command"`) we build a sub-process
+ * adapter; otherwise we choose between `anthropic` and `openaiCompatible`
+ * based on the spec prefix in `id`.
+ *
+ * `apiKey` and `apiKeyEnv` are mutually informative: the explicit value
+ * wins, otherwise we look up the env var named by `apiKeyEnv` (or the
+ * provider default for the prefix in `id`).
+ */
 type CliModelConfig = {
   id: string;
   label?: string | undefined;
@@ -29,10 +63,18 @@ type CliModelConfig = {
   shell?: boolean | undefined;
 };
 
+/**
+ * Shape of a YAML config file — same as `RunConfig` except `models` accepts
+ * either a spec string OR the more detailed `CliModelConfig` object.
+ */
 type FileConfig = Omit<RunConfig, "models"> & {
   models: Array<string | CliModelConfig>;
 };
 
+/**
+ * Flags shared between the default subcommand and the `refine` subcommand.
+ * Kept as a single type so `configFromSharedOptions` can convert in one go.
+ */
 type SharedCliOptions = {
   rounds?: number | undefined;
   final?: FinalMode | undefined;
@@ -48,8 +90,11 @@ type SharedCliOptions = {
 
 const program = new Command();
 
+// Load `.env` ourselves so we don't take a hard dep on dotenv. Must run
+// BEFORE we read any env-derived defaults below.
 loadDotEnv();
 
+// --- Default subcommand: positional model specs + final task --------------
 program
   .name("llm-clash")
   .description("Run text-only multi-draft iterative refinement.")
@@ -80,6 +125,7 @@ program
       );
     }
 
+    // Last positional is the task; everything before it is a model spec.
     const task = items[items.length - 1];
     const modelSpecs = items.slice(0, -1);
     if (!task) {
@@ -94,6 +140,7 @@ program
     });
   });
 
+// --- `refine` subcommand: same thing, but with explicit flags -------------
 program
   .command("refine")
   .description("Run refinement from CLI flags.")
@@ -126,6 +173,7 @@ program
     });
   });
 
+// --- `run` subcommand: load entire RunConfig from a YAML file -------------
 program
   .command("run")
   .description("Run refinement from a YAML config file.")
@@ -144,10 +192,13 @@ program
       await runAndPrint({
         ...parsed,
         models: parsed.models.map((model) =>
+          // Strings → spec parser; objects → richer per-field builder.
           typeof model === "string"
             ? adapterFromSpec(model, specOptions(options))
             : adapterFromConfig(model, specOptions(options))
         ),
+        // Only override `saveArtifacts` when the flag was set on the CLI;
+        // otherwise let the YAML decide.
         ...(options.save !== undefined ? { saveArtifacts: options.save } : {}),
         onEvent: options.quiet ? undefined : logEvent
       });
@@ -156,9 +207,19 @@ program
 
 program.parseAsync().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
+  // Exit code 1 so shell scripts can detect failures.
   process.exitCode = 1;
 });
 
+/**
+ * Run the full pipeline and print a human-friendly summary to stdout.
+ *
+ * Output structure:
+ *   - `Output directory: …`            (if artifacts were saved)
+ *   - `Winner: <draft id>`             (if one exists)
+ *   - Aggregated score table
+ *   - The final answer text
+ */
 async function runAndPrint(config: RunConfig): Promise<void> {
   const result = await runMultiDraftRefinement(config);
   if (result.outputDir) {
@@ -175,6 +236,12 @@ async function runAndPrint(config: RunConfig): Promise<void> {
   console.log(result.finalAnswer);
 }
 
+/**
+ * Default `onEvent` listener — pretty-prints pipeline progress to STDERR
+ * (so it can be separated from the final answer on stdout when piping).
+ *
+ * Disabled by `--quiet`.
+ */
 function logEvent(event: RunEvent): void {
   switch (event.type) {
     case "round_start":
@@ -204,6 +271,17 @@ function logEvent(event: RunEvent): void {
   }
 }
 
+/**
+ * Convert one YAML `CliModelConfig` entry into a real `ModelAdapter`.
+ *
+ * Resolution rules:
+ *   1. `type === "command"` (or any `command` value present) → `commandAdapter`.
+ *   2. `type === "anthropic"` or `id` starts with `anthropic:` → `anthropic`.
+ *   3. `id` starts with `openrouter:` and no key is configured → require an
+ *      OpenRouter key from CLI flag or env, fail fast if missing.
+ *   4. Everything else → `openaiCompatible`, with the right default base URL
+ *      and env var per provider prefix (`openai:`, `openrouter:`, `google:`).
+ */
 function adapterFromConfig(config: CliModelConfig, options: ModelSpecOptions = {}): ModelAdapter {
   if (config.type === "command" || config.command) {
     if (!config.command) {
@@ -227,11 +305,15 @@ function adapterFromConfig(config: CliModelConfig, options: ModelSpecOptions = {
     return anthropic({
       id: config.id,
       label: config.label,
+      // If the YAML didn't provide an explicit model, derive it from the id
+      // by stripping the `anthropic:` prefix.
       model: config.model ?? config.id.replace(/^anthropic:/, ""),
       apiKey: resolveApiKey(config, "ANTHROPIC_API_KEY", options.anthropicApiKey)
     });
   }
 
+  // Fail-fast for OpenRouter when no key is reachable — would otherwise
+  // produce a confusing 401 from the upstream API at request time.
   if (config.id.startsWith("openrouter:") && !config.apiKey && !config.apiKeyEnv) {
     const apiKey = options.openrouterApiKey ?? process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -254,10 +336,20 @@ function adapterFromConfig(config: CliModelConfig, options: ModelSpecOptions = {
   });
 }
 
+/** Strip the `<provider>:` prefix from an id so we get the bare model name. */
 function providerModel(id: string): string {
   return id.replace(/^(openai|openrouter|google):/, "");
 }
 
+/**
+ * API key resolution order:
+ *   1. Explicit `config.apiKey` from the YAML wins.
+ *   2. CLI flag value (`fallbackValue`) wins next.
+ *   3. Otherwise pull from `process.env[config.apiKeyEnv ?? fallbackEnv]`.
+ *
+ * Returning undefined is fine — the underlying adapter decides whether the
+ * key is required (Anthropic does, OpenAI-compatible doesn't always).
+ */
 function resolveApiKey(
   config: CliModelConfig,
   fallbackEnv: string,
@@ -269,6 +361,7 @@ function resolveApiKey(
   return fallbackValue ?? process.env[config.apiKeyEnv ?? fallbackEnv];
 }
 
+/** Pick the conventional env var name to look up for a given id prefix. */
 function defaultApiKeyEnv(id: string): string {
   if (id.startsWith("openrouter:")) {
     return "OPENROUTER_API_KEY";
@@ -279,6 +372,7 @@ function defaultApiKeyEnv(id: string): string {
   return "OPENAI_API_KEY";
 }
 
+/** Pick the corresponding CLI-provided key (if any) for a given id prefix. */
 function defaultApiKeyValue(id: string, options: ModelSpecOptions): string | undefined {
   if (id.startsWith("openrouter:")) {
     return options.openrouterApiKey;
@@ -292,10 +386,12 @@ function defaultApiKeyValue(id: string, options: ModelSpecOptions): string | und
   return options.openaiApiKey;
 }
 
+/** Subset of CLI options forwarded into `adapterFromSpec`. */
 function specOptions(options: { openrouterApiKey?: string | undefined }): ModelSpecOptions {
   return { openrouterApiKey: options.openrouterApiKey };
 }
 
+/** Map shared CLI flags onto the matching `RunConfig` fields. */
 function configFromSharedOptions(options: SharedCliOptions): Partial<RunConfig> {
   return {
     rounds: options.rounds,
@@ -309,6 +405,20 @@ function configFromSharedOptions(options: SharedCliOptions): Partial<RunConfig> 
   };
 }
 
+/**
+ * Minimal `.env` loader (no dotenv dependency).
+ *
+ * Reads `<cwd>/.env`, parses one `KEY=value` per line, and writes any keys
+ * NOT already present on `process.env`. Existing env vars win — that means
+ * a shell-exported value overrides whatever sits in the file.
+ *
+ * Quirks worth knowing:
+ *   - Lines starting with `#` and blank lines are skipped.
+ *   - Surrounding single OR double quotes are stripped.
+ *   - Keys must match `^[A-Za-z_][A-Za-z0-9_]*$`; junk keys are skipped.
+ *   - The file is read SYNCHRONOUSLY at startup so the rest of the
+ *     program can rely on env vars being populated.
+ */
 function loadDotEnv(): void {
   const envPath = resolve(process.cwd(), ".env");
   if (!existsSync(envPath)) {
@@ -327,6 +437,7 @@ function loadDotEnv(): void {
     }
     const key = trimmed.slice(0, separator).trim();
     let value = trimmed.slice(separator + 1).trim();
+    // Reject malformed keys and respect already-set env vars.
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) {
       continue;
     }
@@ -340,6 +451,7 @@ function loadDotEnv(): void {
   }
 }
 
+/** Commander option parser that rejects non-integer input. */
 function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed)) {
@@ -348,6 +460,7 @@ function parseInteger(value: string): number {
   return parsed;
 }
 
+/** Commander option parser that validates `--final` against the FinalMode union. */
 function parseFinalMode(value: string): FinalMode {
   if (value === "choose_best" || value === "synthesize" || value === "choose_or_synthesize") {
     return value;

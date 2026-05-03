@@ -1,5 +1,22 @@
+// ---------------------------------------------------------------------------
+// Prompt builders for every phase of the multi-draft refinement pipeline.
+//
+// All prompts are plain strings (no system messages, no role hierarchy) so
+// they work uniformly across chat completion APIs, completion-only APIs,
+// and CLI-based adapters that just take text on stdin.
+//
+// The output FORMAT in each prompt is contractual: `parser.ts` looks for
+// the headers `# Improved Answer`, `# Changes Made`, `## Candidate N`,
+// `# Best Candidate`, `# Reason`, and the per-criterion `Label: X/10` lines.
+// If you change the format here, update the parser regexes too.
+// ---------------------------------------------------------------------------
+
 import type { Draft, EvaluationCriterion } from "./types.js";
 
+/**
+ * Human-readable label for each criterion, used inside prompts and in the
+ * parser to recognize score lines like "Goal Fit: 7/10".
+ */
 const CRITERION_LABELS: Record<EvaluationCriterion, string> = {
   accuracy: "Accuracy",
   completeness: "Completeness",
@@ -10,6 +27,11 @@ const CRITERION_LABELS: Record<EvaluationCriterion, string> = {
   risk_control: "Risk Control"
 };
 
+/**
+ * Per-criterion guidance shown to judges so they score consistently across
+ * runs and across different judge models. Keep these short — verbose
+ * descriptions tend to push judges into over-explaining instead of scoring.
+ */
 const CRITERION_DESCRIPTIONS: Record<EvaluationCriterion, string> = {
   accuracy: "Correctness, logical consistency, absence of factual or reasoning errors.",
   completeness: "How fully the answer covers the task.",
@@ -20,10 +42,17 @@ const CRITERION_DESCRIPTIONS: Record<EvaluationCriterion, string> = {
   risk_control: "How well the answer identifies uncertainty, risks, and safeguards."
 };
 
+/** Public lookup so the parser can match score lines against the same labels. */
 export function criterionLabel(criterion: EvaluationCriterion): string {
   return CRITERION_LABELS[criterion];
 }
 
+/**
+ * Round-0 prompt — the model has no peer drafts yet, just the task.
+ *
+ * Deliberately avoids over-prescribing the answer style (no required output
+ * format) so each model can play to its strengths during the initial draft.
+ */
 export function initialPrompt(task: string): string {
   return `You need to produce the best possible answer for the task below.
 
@@ -41,6 +70,18 @@ Requirements:
 Produce the answer.`;
 }
 
+/**
+ * Refinement prompt — shown to a model that already has a draft and needs to
+ * improve it after seeing the other models' drafts.
+ *
+ * Key design decisions:
+ * - The model sees its OWN previous draft AND the other variants.
+ * - It is explicitly told the variants may be wrong, so it should not
+ *   blindly merge them. This counteracts the strong "be helpful and
+ *   incorporate everything" bias most chat models have.
+ * - The required output format (`# Improved Answer` + `# Changes Made`) is
+ *   what `extractImprovedAnswer` parses; keep them in sync.
+ */
 export function refinementPrompt(task: string, ownDraft: Draft, otherDrafts: Draft[]): string {
   return `You previously created an answer for the task below.
 
@@ -79,11 +120,22 @@ Output format:
 Briefly explain what you improved and why.`;
 }
 
+/**
+ * Evaluation prompt — turns a model into a judge that scores every final
+ * draft against the active criteria.
+ *
+ * The output template is reproduced verbatim in the prompt (with the right
+ * criterion labels and N candidates) so judges have an explicit form to
+ * fill in. `parser.ts` then walks that form to extract structured scores.
+ *
+ * Run with `temperature: 0` (set by the orchestrator) for stable scoring.
+ */
 export function evaluationPrompt(
   task: string,
   candidates: Draft[],
   criteria: EvaluationCriterion[]
 ): string {
+  // Build the numbered criterion list shown in the prompt body.
   const criteriaText = criteria
     .map((criterion, index) => {
       return `${index + 1}. ${criterionLabel(criterion)}
@@ -137,6 +189,15 @@ Candidate N
 ...`;
 }
 
+/**
+ * Synthesis prompt — used in `synthesize` and `choose_or_synthesize` modes
+ * to fuse the best parts of all final drafts into one canonical answer.
+ *
+ * The judges' aggregated scores are passed in as `evaluationSummary` so the
+ * synthesizer knows which drafts were considered strongest and on which
+ * criteria — without that context it tends to give every candidate equal
+ * weight, which produces bland mash-ups.
+ */
 export function synthesisPrompt(
   task: string,
   candidates: Draft[],
@@ -168,6 +229,12 @@ Rules:
 Produce only the final answer.`;
 }
 
+/**
+ * Format the OTHER drafts shown to a model during a refinement round.
+ *
+ * Drafts are anonymized as "Variant 1", "Variant 2", … (no model ids) so
+ * the model judges the WRITING and not the brand of the model that wrote it.
+ */
 function formatDraftVariants(drafts: Draft[]): string {
   if (drafts.length === 0) {
     return "No additional variants were provided.";
@@ -181,6 +248,13 @@ ${draft.text}`;
     .join("\n\n---\n\n");
 }
 
+/**
+ * Format candidates for the evaluation/synthesis prompts.
+ *
+ * Same anonymization rationale as `formatDraftVariants`: judges see
+ * "Candidate 1..N" instead of model ids so they grade the answers, not the
+ * provenance.
+ */
 function formatCandidates(candidates: Draft[]): string {
   return candidates
     .map((candidate, index) => {

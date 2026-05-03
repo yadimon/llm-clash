@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.runs/
+*.tgz
+.env
+.env.*
+!.env.example
+.idea/

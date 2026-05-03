@@ -1,0 +1,91 @@
+{
+  "name": "@yadimon/llm-clash",
+  "version": "0.1.0",
+  "description": "Text-only multi-draft iterative refinement for producing stronger answers with multiple model adapters.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "llm",
+    "draft",
+    "refinement",
+    "evaluation",
+    "orchestration",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "llm-clash": "dist/cli/run.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./adapters/openai-compatible": {
+      "types": "./dist/adapters/openaiCompatible.d.ts",
+      "import": "./dist/adapters/openaiCompatible.js"
+    },
+    "./adapters/anthropic": {
+      "types": "./dist/adapters/anthropic.d.ts",
+      "import": "./dist/adapters/anthropic.js"
+    },
+    "./adapters/command": {
+      "types": "./dist/adapters/commandAdapter.d.ts",
+      "import": "./dist/adapters/commandAdapter.js"
+    },
+    "./adapters/mock": {
+      "types": "./dist/adapters/mock.d.ts",
+      "import": "./dist/adapters/mock.js"
+    },
+    "./adapters/vercel-ai": {
+      "types": "./dist/adapters/vercelAi.d.ts",
+      "import": "./dist/adapters/vercelAi.js"
+    }
+  },
+  "files": [
+    "dist",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "node scripts/check.mjs",
+    "smoke:agents:core": "node scripts/smoke-local-agents.mjs core",
+    "smoke:agents:gemini-opencode": "node scripts/smoke-local-agents.mjs gemini-opencode",
+    "smoke:agents": "node scripts/smoke-local-agents.mjs all",
+    "pack": "npm pack --dry-run",
+    "publish:dry-run": "npm publish --dry-run",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "yaml": "^2.8.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^22.13.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.20.1",
+    "prettier": "^3.5.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

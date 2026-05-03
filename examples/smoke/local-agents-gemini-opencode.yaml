@@ -1,0 +1,20 @@
+task: |
+  In two concise bullets, make a minimal implementation plan for adding a health
+  check endpoint to an existing Node.js service.
+
+rounds: 0
+finalMode: choose_best
+maxTokens: 700
+saveArtifacts: true
+outputDir: .runs/local-agents-gemini-opencode-smoke
+
+models:
+  - gemini-cli:flash
+  - open-code:openrouter/openrouter/free
+
+evaluationCriteria:
+  - accuracy
+  - completeness
+  - usefulness
+  - clarity
+  - goal_fit

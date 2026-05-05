@@ -24,6 +24,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { Command } from "commander";
 import YAML from "yaml";
@@ -33,6 +34,10 @@ import { openaiCompatible } from "../adapters/openaiCompatible.js";
 import { runMultiDraftRefinement } from "../core/orchestrator.js";
 import type { FinalMode, ModelAdapter, RunConfig, RunEvent } from "../core/types.js";
 import { adapterFromSpec, type ModelSpecOptions } from "./modelSpec.js";
+
+const require = createRequire(import.meta.url);
+const packageJson = require("../../package.json") as { version: string };
+const PACKAGE_VERSION = packageJson.version;
 
 /**
  * Per-model object inside a YAML config file.
@@ -98,7 +103,7 @@ loadDotEnv();
 program
   .name("llm-clash")
   .description("Run text-only multi-draft iterative refinement.")
-  .version("0.1.0")
+  .version(PACKAGE_VERSION)
   .argument("[items...]", "Model specs followed by the task text")
   .option("--rounds <rounds>", "Number of refinement rounds", parseInteger)
   .option(

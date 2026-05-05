@@ -15,6 +15,14 @@
   "engines": {
     "node": ">=20"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yadimon/llm-clash.git"
+  },
+  "homepage": "https://github.com/yadimon/llm-clash#readme",
+  "bugs": {
+    "url": "https://github.com/yadimon/llm-clash/issues"
+  },
   "bin": {
     "llm-clash": "dist/cli/run.js"
   },

@@ -2,8 +2,8 @@
 
 ## Reporting a Vulnerability
 
-Please report vulnerabilities privately through the repository security advisory
-flow once the canonical GitHub repository is configured.
+Please report vulnerabilities privately through GitHub Security Advisories:
+`https://github.com/yadimon/llm-clash/security/advisories/new`.
 
 Do not include API keys, prompts containing secrets, or private run artifacts in
 public issues.

@@ -5,9 +5,11 @@
 // Three usage modes (subcommands):
 //
 //   1. DEFAULT (positional):
-//        llm-clash <model-spec> [<model-spec>...] "<task>"
-//      Last positional is the task; everything before it is a list of
-//      model specs (see `./modelSpec.ts` for the spec syntax).
+//        llm-clash [<model-spec>...] "<task>"
+//      Last positional is the task; everything before it (zero or more
+//      items) is a list of model specs (see `./modelSpec.ts`). When no
+//      specs are given, `./autoSelect.ts` detects installed local CLIs
+//      and picks the top two by priority after user confirmation.
 //
 //   2. `refine` subcommand — same thing but with explicit flags:
 //        llm-clash refine --task "..." --models openai:gpt-4.1 anthropic:opus
@@ -33,7 +35,8 @@ import { commandAdapter } from "../adapters/commandAdapter.js";
 import { openaiCompatible } from "../adapters/openaiCompatible.js";
 import { runMultiDraftRefinement } from "../core/orchestrator.js";
 import type { FinalMode, ModelAdapter, RunConfig, RunEvent } from "../core/types.js";
-import { adapterFromSpec, type ModelSpecOptions } from "./modelSpec.js";
+import { autoSelectModels } from "./autoSelect.js";
+import { adapterFromSpec, looksLikeModelSpec, type ModelSpecOptions } from "./modelSpec.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../../package.json") as { version: string };
@@ -104,7 +107,7 @@ program
   .name("llm-clash")
   .description("Run text-only multi-draft iterative refinement.")
   .version(PACKAGE_VERSION)
-  .argument("[items...]", "Model specs followed by the task text")
+  .argument("[items...]", "Optional model specs followed by the task text")
   .option("--rounds <rounds>", "Number of refinement rounds", parseInteger)
   .option(
     "--final <mode>",
@@ -124,23 +127,36 @@ program
     if (items.length === 0) {
       program.help();
     }
-    if (items.length < 2) {
-      throw new Error(
-        'Expected at least one model spec and a task, for example: llm-clash codex:gpt-5.4-mini-low "Make a plan."'
-      );
-    }
 
-    // Last positional is the task; everything before it is a model spec.
+    // Split positionals into model specs (anything that looks like one) and
+    // task text (the last non-spec item — usually the only quoted argument).
+    // This lets `npx llm-clash "task..."` fall through to auto-selection
+    // without forcing the user to type any model spec.
     const task = items[items.length - 1];
-    const modelSpecs = items.slice(0, -1);
     if (!task) {
       throw new Error("Task text is required.");
     }
+    if (looksLikeModelSpec(task)) {
+      throw new Error(
+        "Last positional looks like a model spec, not a task. Wrap the task in quotes, " +
+          'e.g. llm-clash cc codex "Make a plan."'
+      );
+    }
+    const modelSpecs = items.slice(0, -1);
+    for (const spec of modelSpecs) {
+      if (!looksLikeModelSpec(spec)) {
+        throw new Error(
+          `"${spec}" is not a recognized model spec. Use a known prefix (e.g. cc, codex, openai:gpt-4.1) or remove it.`
+        );
+      }
+    }
+
+    const resolvedSpecs = modelSpecs.length === 0 ? (await autoSelectModels()).specs : modelSpecs;
 
     await runAndPrint({
       ...configFromSharedOptions(options),
       task,
-      models: modelSpecs.map((spec) => adapterFromSpec(spec, specOptions(options))),
+      models: resolvedSpecs.map((spec) => adapterFromSpec(spec, specOptions(options))),
       onEvent: options.quiet ? undefined : logEvent
     });
   });

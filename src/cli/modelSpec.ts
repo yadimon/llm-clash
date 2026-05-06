@@ -30,6 +30,71 @@ import { openaiCompatible } from "../adapters/openaiCompatible.js";
 import type { ModelAdapter } from "../core/types.js";
 
 /**
+ * Bare-name shortcuts for the most common local-CLI specs. Typing just `cc`
+ * on the command line expands to the full top-model spec for that provider.
+ *
+ * `opencode` is intentionally absent: it has no curated default model (the
+ * provider front-ends dozens) — we surface a clear error instead of guessing.
+ */
+const BARE_SHORTCUTS: Record<string, string> = {
+  cc: "claude-code:claude-opus-4-7-high",
+  "claude-code": "claude-code:claude-opus-4-7-high",
+  codex: "codex:gpt-5.5-high",
+  gemini: "gemini-cli:flash",
+  "gemini-cli": "gemini-cli:flash"
+};
+
+/** Bare names that should produce an explicit error instead of a default. */
+const BARE_NEEDS_MODEL = new Set(["opencode", "open-code"]);
+
+/**
+ * Spec strings the auto-selection / CLI parser treats as model identifiers.
+ * Anything else on the command line is assumed to be the task text.
+ */
+export const KNOWN_SPEC_PREFIXES = [
+  "openai:",
+  "anthropic:",
+  "openrouter:",
+  "google:",
+  "claude-code:",
+  "claude:",
+  "codex:",
+  "gemini-cli:",
+  "gemini:",
+  "opencode:",
+  "open-code:",
+  "command:"
+];
+
+/**
+ * Decide whether a positional CLI argument is a model spec or task text.
+ * Used by the default subcommand to allow `npx llm-clash "task"` to fall
+ * through to the auto-selection flow.
+ */
+export function looksLikeModelSpec(value: string): boolean {
+  if (BARE_SHORTCUTS[value] !== undefined || BARE_NEEDS_MODEL.has(value)) {
+    return true;
+  }
+  return KNOWN_SPEC_PREFIXES.some((prefix) => value.startsWith(prefix));
+}
+
+/**
+ * Resolve a bare-name shortcut to its full spec, or pass through unchanged.
+ * Throws for bare names that have no curated default (`opencode`).
+ */
+function expandBareShortcut(spec: string): string {
+  if (BARE_SHORTCUTS[spec] !== undefined) {
+    return BARE_SHORTCUTS[spec];
+  }
+  if (BARE_NEEDS_MODEL.has(spec)) {
+    throw new Error(
+      `"${spec}" has no default model. Use ${spec}:<model> (e.g. opencode:anthropic/claude-3.5-sonnet) or pick another spec.`
+    );
+  }
+  return spec;
+}
+
+/**
  * API keys passed in via CLI flags.
  *
  * If a field is set here it overrides the corresponding environment
@@ -59,7 +124,9 @@ type ParsedLocalSpec = {
  * Dispatches by prefix; an unknown prefix throws because silently falling
  * back to (say) `openai:` would be confusing when the user typed `gpt:`.
  */
-export function adapterFromSpec(spec: string, options: ModelSpecOptions = {}): ModelAdapter {
+export function adapterFromSpec(rawSpec: string, options: ModelSpecOptions = {}): ModelAdapter {
+  const spec = expandBareShortcut(rawSpec);
+
   if (spec.startsWith("claude-code:") || spec.startsWith("claude:")) {
     return claudeCodeAdapter(spec);
   }
@@ -323,6 +390,12 @@ function normalizeCodexModel(model: string): string {
   }
   if (normalized === "gpt5.3-codex" || normalized === "gpt-5.3-codex") {
     return "gpt-5.3-codex";
+  }
+  if (normalized === "gpt5.5" || normalized === "gpt-5.5") {
+    return "gpt-5.5";
+  }
+  if (normalized === "gpt5.5-codex" || normalized === "gpt-5.5-codex") {
+    return "gpt-5.5-codex";
   }
   return model;
 }

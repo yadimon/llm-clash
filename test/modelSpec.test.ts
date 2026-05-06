@@ -36,4 +36,17 @@ describe("adapterFromSpec", () => {
       "open-code:openrouter/openrouter/free"
     );
   });
+
+  it("expands bare-name shortcuts to full local-CLI specs", () => {
+    expect(adapterFromSpec("cc").id).toBe("claude-code:claude-opus-4-7-high");
+    expect(adapterFromSpec("claude-code").id).toBe("claude-code:claude-opus-4-7-high");
+    expect(adapterFromSpec("codex").id).toBe("codex:gpt-5.5-high");
+    expect(adapterFromSpec("gemini").id).toBe("gemini-cli:flash");
+    expect(adapterFromSpec("gemini-cli").id).toBe("gemini-cli:flash");
+  });
+
+  it("rejects bare opencode because it has no curated default model", () => {
+    expect(() => adapterFromSpec("opencode")).toThrow(/no default model/);
+    expect(() => adapterFromSpec("open-code")).toThrow(/no default model/);
+  });
 });

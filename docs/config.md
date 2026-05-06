@@ -1,13 +1,28 @@
 # Configuration
 
-The CLI accepts direct model specs, the `refine` subcommand, or a YAML file.
-YAML is recommended when models need custom endpoints, command arguments, or
-timeouts.
+The CLI accepts a task with optional model specs, the `refine` subcommand, or a
+YAML file. YAML is recommended when models need custom endpoints, command
+arguments, or timeouts.
 
 ```bash
+# Zero-config: detect installed local CLIs and pick the top two by priority.
+npx @yadimon/llm-clash "Make a plan."
+
+# Bare-name shortcuts (cc, codex, gemini) expand to top-model specs with high
+# reasoning effort.
+npx @yadimon/llm-clash cc codex "Make a plan."
+
+# Explicit model specs.
 npx @yadimon/llm-clash claude-code:sonnet-low codex:gpt-5.4-mini-low "Make a plan."
+
+# YAML file with full configuration.
 npx @yadimon/llm-clash run ./task.yaml --save
 ```
+
+The zero-config flow asks once for confirmation and can persist the chosen
+selection to `~/.config/llm-clash/preferences.json` (answer `s` at the
+prompt). Hosted-API providers (`openai:`, `anthropic:`, `openrouter:`,
+`google:`) are never auto-selected — pass them explicitly when needed.
 
 ## Model Entries
 
@@ -71,4 +86,4 @@ draft creation, evaluation, synthesis, artifact saving, and completion.
 final candidates and evaluation summary.
 
 `choose_or_synthesize` selects directly when the top score difference is
-significant, and synthesizes when candidates are close.
+significant, and synthesizes when candidates are close. This is the default.

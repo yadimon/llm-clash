@@ -50,6 +50,37 @@ npx @yadimon/llm-clash --help
 
 ## Quick start
 
+### Zero config
+
+If you have at least two of `claude`, `codex`, `gemini`, `opencode`
+installed locally, just give it a task — `llm-clash` picks the top two by
+priority (`codex` > `claude-code` > `gemini-cli` > `opencode`), shows the
+selection once, and asks for confirmation:
+
+```bash
+npx @yadimon/llm-clash "Plane die Migration einer Express-App auf Fastify."
+```
+
+Press `Y` to use it for this run, `s` to save the choice to
+`~/.config/llm-clash/preferences.json` (skips the prompt next time), or `n`
+to abort. Hosted-API providers are never auto-selected — use explicit specs
+(`anthropic:…`, `openai:…`, `openrouter:…`, `google:…`) for those.
+
+### Bare-name shortcuts
+
+`cc`, `codex`, `gemini` expand to the top-model spec for each provider with
+high reasoning effort:
+
+```bash
+npx @yadimon/llm-clash cc codex "Make a step-by-step plan to add OAuth2 login."
+# → claude-code:claude-opus-4-7-high  +  codex:gpt-5.5-high
+```
+
+`opencode` has no curated default (too many models) — pass an explicit
+`opencode:<model>` spec.
+
+### Explicit specs
+
 Pick two or three models, end with the task in quotes:
 
 ```bash
@@ -107,17 +138,20 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 Each model on the command line is a short string with a provider prefix:
 
-| Spec                                     | What it is                           | Notes                                         |
-| ---------------------------------------- | ------------------------------------ | --------------------------------------------- |
-| `openai:gpt-4.1`                         | OpenAI Chat Completions              | needs `OPENAI_API_KEY`                        |
-| `anthropic:claude-sonnet-4-5`            | Anthropic Messages API               | needs `ANTHROPIC_API_KEY`                     |
-| `openrouter:anthropic/claude-3.5-sonnet` | OpenRouter (any of its models)       | needs `OPENROUTER_API_KEY`                    |
-| `google:gemini-2.5-pro`                  | Google Gemini OpenAI-compat endpoint | needs `GOOGLE_API_KEY`                        |
-| `claude-code:opus`                       | Local `claude` CLI                   | uses your existing Claude Code login          |
-| `codex:gpt-5.3-medium`                   | Local `codex` CLI                    | uses your existing Codex login                |
-| `gemini-cli:flash`                       | Local `gemini` CLI                   | uses your existing Gemini CLI login           |
-| `opencode:anthropic/claude-3.5-sonnet`   | Local `opencode` CLI                 | uses opencode's configured backends           |
-| `command:<id>:<command>[:arg…]`          | Any local command-line LLM           | for richer args, prefer a YAML config (below) |
+| Spec                                     | What it is                                      | Notes                                         |
+| ---------------------------------------- | ----------------------------------------------- | --------------------------------------------- |
+| `cc`                                     | Shortcut for `claude-code:claude-opus-4-7-high` | bare-name shortcut                            |
+| `codex`                                  | Shortcut for `codex:gpt-5.5-high`               | bare-name shortcut                            |
+| `gemini`                                 | Shortcut for `gemini-cli:flash`                 | bare-name shortcut                            |
+| `openai:gpt-4.1`                         | OpenAI Chat Completions                         | needs `OPENAI_API_KEY`                        |
+| `anthropic:claude-sonnet-4-5`            | Anthropic Messages API                          | needs `ANTHROPIC_API_KEY`                     |
+| `openrouter:anthropic/claude-3.5-sonnet` | OpenRouter (any of its models)                  | needs `OPENROUTER_API_KEY`                    |
+| `google:gemini-2.5-pro`                  | Google Gemini OpenAI-compat endpoint            | needs `GOOGLE_API_KEY`                        |
+| `claude-code:opus`                       | Local `claude` CLI                              | uses your existing Claude Code login          |
+| `codex:gpt-5.3-medium`                   | Local `codex` CLI                               | uses your existing Codex login                |
+| `gemini-cli:flash`                       | Local `gemini` CLI                              | uses your existing Gemini CLI login           |
+| `opencode:anthropic/claude-3.5-sonnet`   | Local `opencode` CLI                            | uses opencode's configured backends           |
+| `command:<id>:<command>[:arg…]`          | Any local command-line LLM                      | for richer args, prefer a YAML config (below) |
 
 **Reasoning effort suffix.** Local agent specs accept a trailing
 `-low / -medium / -high / -xhigh / -max`:
@@ -137,18 +171,18 @@ usually the best price/quality trade-off.
 All options work on the default `llm-clash` command and on the `refine`
 subcommand.
 
-| Flag                         | Purpose                                                                    | Default       |
-| ---------------------------- | -------------------------------------------------------------------------- | ------------- |
-| `--rounds <n>`               | Refinement rounds AFTER the initial draft (max 4).                         | `2`           |
-| `--final <mode>`             | `choose_best`, `synthesize`, or `choose_or_synthesize`.                    | `choose_best` |
-| `--temperature <n>`          | Sampling temperature for drafting/refinement (judges always use 0).        | provider      |
-| `--max-tokens <n>`           | Max output tokens per call.                                                | provider      |
-| `--self-score-weight <n>`    | Weight when a model judges its OWN draft (lower than peer to dampen bias). | `0.5`         |
-| `--peer-score-weight <n>`    | Weight when a model judges another model's draft.                          | `1.0`         |
-| `--save` / `--no-save`       | Write per-round drafts and judgments to disk.                              | `--save`      |
-| `--output <dir>`             | Where to write artifacts. Falls back to `.runs/<timestamp>/`.              | `.runs/…`     |
-| `--openrouter-api-key <key>` | One-off OpenRouter key (alternative to env var).                           | —             |
-| `--quiet`                    | Suppress progress logging on stderr (final answer still prints to stdout). | off           |
+| Flag                         | Purpose                                                                    | Default                |
+| ---------------------------- | -------------------------------------------------------------------------- | ---------------------- |
+| `--rounds <n>`               | Refinement rounds AFTER the initial draft (max 4).                         | `2`                    |
+| `--final <mode>`             | `choose_best`, `synthesize`, or `choose_or_synthesize`.                    | `choose_or_synthesize` |
+| `--temperature <n>`          | Sampling temperature for drafting/refinement (judges always use 0).        | provider               |
+| `--max-tokens <n>`           | Max output tokens per call.                                                | provider               |
+| `--self-score-weight <n>`    | Weight when a model judges its OWN draft (lower than peer to dampen bias). | `0.5`                  |
+| `--peer-score-weight <n>`    | Weight when a model judges another model's draft.                          | `1.0`                  |
+| `--save` / `--no-save`       | Write per-round drafts and judgments to disk.                              | `--save`               |
+| `--output <dir>`             | Where to write artifacts. Falls back to `.runs/<timestamp>/`.              | `.runs/…`              |
+| `--openrouter-api-key <key>` | One-off OpenRouter key (alternative to env var).                           | —                      |
+| `--quiet`                    | Suppress progress logging on stderr (final answer still prints to stdout). | off                    |
 
 ### Final modes
 

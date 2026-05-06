@@ -231,11 +231,13 @@ function claudeCodeAdapter(spec: string): ModelAdapter {
     args.push("--effort", normalizeEffort(parsed.effort));
   }
 
+  // Refinement prompts include the original task plus several full drafts, so
+  // keep them off argv to avoid command line length limits on Windows.
   return commandAdapter({
     id: spec,
     command: "claude",
     args,
-    inputMode: "arg",
+    inputMode: "stdin",
     timeoutMs: 180_000,
     shell: useShellForLocalCli()
   });

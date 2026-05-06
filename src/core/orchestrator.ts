@@ -180,6 +180,7 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
  * Defaults of note:
  * - `rounds`              = 2  (initial draft + 2 refinement passes)
  * - `maxRounds`           = 4  (hard ceiling to prevent runaway loops)
+ * - `finalMode`           = "choose_or_synthesize" (synthesize on tie/close gap)
  * - `selfScoreWeight`     = 0.5 (judges score themselves at half weight)
  * - `peerScoreWeight`     = 1   (full weight for peer scoring)
  * - `synthesisThreshold`  = 0.3 (gap below this counts as "no clear winner")
@@ -212,7 +213,7 @@ function normalizeConfig(config: RunConfig): NormalizedRunConfig {
     evaluationCriteria: config.evaluationCriteria ?? DEFAULT_EVALUATION_CRITERIA,
     temperature: config.temperature,
     maxTokens: config.maxTokens,
-    finalMode: config.finalMode ?? "choose_best",
+    finalMode: config.finalMode ?? "choose_or_synthesize",
     selfScoreWeight: config.selfScoreWeight ?? 0.5,
     peerScoreWeight: config.peerScoreWeight ?? 1,
     outputDir: config.outputDir,

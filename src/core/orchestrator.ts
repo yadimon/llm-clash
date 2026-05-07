@@ -82,10 +82,7 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
   const rounds: RoundResult[] = [];
   throwIfAborted(normalized.signal);
   emit({ type: "round_start", round: 0 });
-  let currentDrafts = await createInitialDrafts(normalized);
-  for (const draft of currentDrafts) {
-    emit({ type: "draft_created", draft });
-  }
+  let currentDrafts = await createInitialDrafts(normalized, emit);
   rounds.push({ round: 0, drafts: currentDrafts });
   emit({ type: "round_complete", round: 0, drafts: currentDrafts });
 
@@ -95,10 +92,7 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
   for (let round = 1; round <= normalized.rounds; round += 1) {
     throwIfAborted(normalized.signal);
     emit({ type: "round_start", round });
-    currentDrafts = await refineDrafts(normalized, currentDrafts, round);
-    for (const draft of currentDrafts) {
-      emit({ type: "draft_created", draft });
-    }
+    currentDrafts = await refineDrafts(normalized, currentDrafts, round, emit);
     rounds.push({ round, drafts: currentDrafts });
     emit({ type: "round_complete", round, drafts: currentDrafts });
   }
@@ -229,17 +223,34 @@ function normalizeConfig(config: RunConfig): NormalizedRunConfig {
  * parallel. There are no peer drafts to look at yet, so each model only sees
  * the bare task via `initialPrompt`.
  */
-async function createInitialDrafts(config: NormalizedRunConfig): Promise<Draft[]> {
+async function createInitialDrafts(
+  config: NormalizedRunConfig,
+  emit: (event: Parameters<NonNullable<RunConfig["onEvent"]>>[0]) => void
+): Promise<Draft[]> {
   return Promise.all(
     config.models.map(async (model) => {
-      const output = await model.generate({
-        prompt: initialPrompt(config.task),
-        temperature: config.temperature,
-        maxTokens: config.maxTokens,
-        signal: config.signal
-      });
+      emit({ type: "draft_start", modelId: model.id, round: 0, phase: "initial" });
+      try {
+        const output = await model.generate({
+          prompt: initialPrompt(config.task),
+          temperature: config.temperature,
+          maxTokens: config.maxTokens,
+          signal: config.signal
+        });
 
-      return createDraft(model.id, 0, output.text);
+        const draft = createDraft(model.id, 0, output.text);
+        emit({ type: "draft_created", draft });
+        return draft;
+      } catch (error) {
+        emit({
+          type: "draft_failed",
+          modelId: model.id,
+          round: 0,
+          phase: "initial",
+          error: toError(error)
+        });
+        throw error;
+      }
     })
   );
 }
@@ -252,7 +263,8 @@ async function createInitialDrafts(config: NormalizedRunConfig): Promise<Draft[]
 async function refineDrafts(
   config: NormalizedRunConfig,
   currentDrafts: Draft[],
-  round: number
+  round: number,
+  emit: (event: Parameters<NonNullable<RunConfig["onEvent"]>>[0]) => void
 ): Promise<Draft[]> {
   return Promise.all(
     currentDrafts.map(async (draft) => {
@@ -260,15 +272,29 @@ async function refineDrafts(
       // Show the model only OTHER models' drafts so it isn't biased toward
       // simply re-emitting its own previous output.
       const otherDrafts = currentDrafts.filter((other) => other.modelId !== draft.modelId);
-      const output = await model.generate({
-        prompt: refinementPrompt(config.task, draft, otherDrafts),
-        temperature: config.temperature,
-        maxTokens: config.maxTokens,
-        signal: config.signal
-      });
-      const parsed = extractImprovedAnswer(output.text);
+      emit({ type: "draft_start", modelId: model.id, round, phase: "refinement" });
+      try {
+        const output = await model.generate({
+          prompt: refinementPrompt(config.task, draft, otherDrafts),
+          temperature: config.temperature,
+          maxTokens: config.maxTokens,
+          signal: config.signal
+        });
+        const parsed = extractImprovedAnswer(output.text);
 
-      return createDraft(model.id, round, parsed.answer, parsed.notes);
+        const nextDraft = createDraft(model.id, round, parsed.answer, parsed.notes);
+        emit({ type: "draft_created", draft: nextDraft });
+        return nextDraft;
+      } catch (error) {
+        emit({
+          type: "draft_failed",
+          modelId: model.id,
+          round,
+          phase: "refinement",
+          error: toError(error)
+        });
+        throw error;
+      }
     })
   );
 }
@@ -290,21 +316,26 @@ async function evaluateFinalDrafts(
     config.models.map(async (model) => {
       throwIfAborted(config.signal);
       emit({ type: "evaluation_start", judgeModelId: model.id });
-      const output = await model.generate({
-        prompt: evaluationPrompt(config.task, finalDrafts, config.evaluationCriteria),
-        temperature: 0,
-        maxTokens: config.maxTokens,
-        signal: config.signal
-      });
+      try {
+        const output = await model.generate({
+          prompt: evaluationPrompt(config.task, finalDrafts, config.evaluationCriteria),
+          temperature: 0,
+          maxTokens: config.maxTokens,
+          signal: config.signal
+        });
 
-      const result = parseEvaluationText(
-        output.text,
-        finalDrafts,
-        config.evaluationCriteria,
-        model.id
-      );
-      emit({ type: "evaluation_complete", result });
-      return result;
+        const result = parseEvaluationText(
+          output.text,
+          finalDrafts,
+          config.evaluationCriteria,
+          model.id
+        );
+        emit({ type: "evaluation_complete", result });
+        return result;
+      } catch (error) {
+        emit({ type: "evaluation_failed", judgeModelId: model.id, error: toError(error) });
+        throw error;
+      }
     })
   );
 }
@@ -409,4 +440,8 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw new Error("Multi-draft refinement was aborted.");
   }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

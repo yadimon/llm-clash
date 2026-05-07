@@ -268,8 +268,18 @@ function logEvent(event: RunEvent): void {
     case "round_start":
       console.error(`[round ${event.round}] starting`);
       break;
+    case "draft_start":
+      console.error(
+        `  [draft:start] model=${event.modelId} round=${event.round} phase=${event.phase}`
+      );
+      break;
     case "draft_created":
-      console.error(`  [draft] ${event.draft.modelId} round=${event.draft.round}`);
+      console.error(`  [draft:done] model=${event.draft.modelId} round=${event.draft.round}`);
+      break;
+    case "draft_failed":
+      console.error(
+        `  [draft:failed] model=${event.modelId} round=${event.round} phase=${event.phase}: ${event.error.message}`
+      );
       break;
     case "round_complete":
       console.error(`[round ${event.round}] complete (${event.drafts.length} drafts)`);
@@ -279,6 +289,9 @@ function logEvent(event: RunEvent): void {
       break;
     case "evaluation_complete":
       console.error(`[eval] judge=${event.result.judgeModelId} done`);
+      break;
+    case "evaluation_failed":
+      console.error(`[eval] judge=${event.judgeModelId} failed: ${event.error.message}`);
       break;
     case "synthesis_start":
       console.error("[synthesis] generating final answer");

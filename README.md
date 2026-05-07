@@ -182,7 +182,7 @@ subcommand.
 | `--save` / `--no-save`       | Write per-round drafts and judgments to disk.                              | `--save`               |
 | `--output <dir>`             | Where to write artifacts. Falls back to `.runs/<timestamp>/`.              | `.runs/…`              |
 | `--openrouter-api-key <key>` | One-off OpenRouter key (alternative to env var).                           | —                      |
-| `--quiet`                    | Suppress progress logging on stderr (final answer still prints to stdout). | off                    |
+| `--quiet`                    | Suppress progress logging on stderr (model start/done/error, etc.).        | off                    |
 
 ### Final modes
 
@@ -256,7 +256,7 @@ models:
     command: codex
     args: ["exec", "--model", "gpt-5.4-mini", "--skip-git-repo-check", "--color", "never"]
     inputMode: stdin
-    timeoutMs: 180000
+    timeoutMs: 600000
 ```
 
 Full per-model field reference: [`docs/config.md`](docs/config.md).

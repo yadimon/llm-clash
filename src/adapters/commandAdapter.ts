@@ -17,7 +17,7 @@
 //                   else appending). Used by CLIs that only accept file inputs.
 //   - `file`      – alias for `tempfile`.
 //
-// All sub-processes get a `timeoutMs` budget (default 120s) and respect
+// All sub-processes get a `timeoutMs` budget (default 10 minutes) and respect
 // `ModelInput.signal` for cooperative cancellation.
 // ---------------------------------------------------------------------------
 
@@ -94,7 +94,7 @@ export function commandAdapter(
           cwd: normalized.cwd,
           env: normalized.env,
           shell: normalized.shell,
-          timeoutMs: normalized.timeoutMs ?? 120_000,
+          timeoutMs: normalized.timeoutMs ?? 600_000,
           signal: input.signal
         });
         return { text };

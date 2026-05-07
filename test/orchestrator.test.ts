@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { mockAdapter } from "../src/adapters/mock.js";
 import { runMultiDraftRefinement } from "../src/core/orchestrator.js";
@@ -70,9 +71,100 @@ describe("runMultiDraftRefinement", () => {
     expect(result.startedAt).toBeTruthy();
     expect(result.finishedAt).toBeTruthy();
     expect(events).toContain("round_start");
+    expect(events).toContain("draft_start");
     expect(events).toContain("draft_created");
     expect(events).toContain("evaluation_complete");
     expect(events).toContain("run_complete");
+  });
+
+  it("emits the failing model before surfacing generation errors", async () => {
+    const events: RunEvent[] = [];
+    const modelA = mockAdapter({
+      id: "model-a",
+      generate: () => {
+        throw new Error("model-a unavailable");
+      }
+    });
+    const modelB = mockAdapter({
+      id: "model-b",
+      generate: (input) => responseFor("B", input.prompt)
+    });
+
+    await expect(
+      runMultiDraftRefinement({
+        task: "Create a migration plan.",
+        models: [modelA, modelB],
+        rounds: 0,
+        finalMode: "choose_best",
+        saveArtifacts: false,
+        onEvent: (event) => events.push(event)
+      })
+    ).rejects.toThrow(/model-a unavailable/);
+
+    expect(events).toContainEqual({
+      type: "draft_start",
+      modelId: "model-a",
+      round: 0,
+      phase: "initial"
+    });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "draft_failed",
+          modelId: "model-a",
+          round: 0,
+          phase: "initial"
+        })
+      ])
+    );
+  });
+
+  it("emits completed drafts as each model finishes", async () => {
+    const events: RunEvent[] = [];
+    let releaseSlowDraft: (() => void) | undefined;
+    let slowInitialReleased = false;
+    const modelA = mockAdapter({
+      id: "model-a",
+      generate: (input) => responseFor("A", input.prompt)
+    });
+    const modelB = mockAdapter({
+      id: "model-b",
+      generate: async (input) => {
+        if (!input.prompt.includes("Evaluate several candidate answers") && !slowInitialReleased) {
+          await new Promise<void>((resolve) => {
+            releaseSlowDraft = () => {
+              slowInitialReleased = true;
+              resolve();
+            };
+          });
+        }
+        return responseFor("B", input.prompt);
+      }
+    });
+
+    const run = runMultiDraftRefinement({
+      task: "Create a migration plan.",
+      models: [modelA, modelB],
+      rounds: 0,
+      finalMode: "choose_best",
+      saveArtifacts: false,
+      onEvent: (event) => events.push(event)
+    });
+
+    await waitForEvent(
+      events,
+      (event) => event.type === "draft_created" && event.draft.modelId === "model-a"
+    );
+    expect(events.some((event) => event.type === "round_complete" && event.round === 0)).toBe(
+      false
+    );
+
+    releaseSlowDraft?.();
+    await run;
+
+    expect(
+      events.some((event) => event.type === "draft_created" && event.draft.modelId === "model-b")
+    ).toBe(true);
   });
 });
 
@@ -118,4 +210,17 @@ Added detail.`;
   }
 
   return `Initial ${label}`;
+}
+
+async function waitForEvent(
+  events: RunEvent[],
+  predicate: (event: RunEvent) => boolean
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (events.some(predicate)) {
+      return;
+    }
+    await delay(10);
+  }
+  throw new Error("Timed out waiting for event.");
 }

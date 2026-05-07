@@ -46,6 +46,7 @@ const BARE_SHORTCUTS: Record<string, string> = {
 
 /** Bare names that should produce an explicit error instead of a default. */
 const BARE_NEEDS_MODEL = new Set(["opencode", "open-code"]);
+const LOCAL_CLI_TIMEOUT_MS = 600_000;
 
 /**
  * Spec strings the auto-selection / CLI parser treats as model identifiers.
@@ -238,7 +239,7 @@ function claudeCodeAdapter(spec: string): ModelAdapter {
     command: "claude",
     args,
     inputMode: "stdin",
-    timeoutMs: 180_000,
+    timeoutMs: LOCAL_CLI_TIMEOUT_MS,
     shell: useShellForLocalCli()
   });
 }
@@ -276,7 +277,7 @@ function codexAdapter(spec: string): ModelAdapter {
     command: "codex",
     args,
     inputMode: "stdin",
-    timeoutMs: 180_000,
+    timeoutMs: LOCAL_CLI_TIMEOUT_MS,
     shell: useShellForLocalCli()
   });
 }
@@ -304,7 +305,7 @@ function geminiCliAdapter(spec: string): ModelAdapter {
       "plan"
     ],
     inputMode: "stdin",
-    timeoutMs: 180_000,
+    timeoutMs: LOCAL_CLI_TIMEOUT_MS,
     shell: useShellForLocalCli()
   });
 }
@@ -323,7 +324,7 @@ function openCodeAdapter(spec: string): ModelAdapter {
     command: "opencode",
     args: ["run", "--model", model, "{prompt}"],
     inputMode: "arg",
-    timeoutMs: 180_000,
+    timeoutMs: LOCAL_CLI_TIMEOUT_MS,
     env: {
       OPENCODE_PERMISSION: JSON.stringify({
         read: "allow",

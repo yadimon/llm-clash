@@ -218,16 +218,28 @@ export type RunResult = {
  * Progress events emitted to `RunConfig.onEvent` while a run is in flight.
  *
  * Used by the CLI to print live progress and by SDK consumers to drive
- * their own UIs. Events fire in pipeline order:
- * round_start → draft_created* → round_complete → … → evaluation_start →
- * evaluation_complete → (synthesis_start) → (artifacts_saved) → run_complete.
+ * their own UIs. Draft events include per-model start, success, and failure
+ * signals so long-running local CLI adapters are visible while they run.
+ * Events fire in pipeline order:
+ * round_start → draft_start* → draft_created* → round_complete → … →
+ * evaluation_start → evaluation_complete → (synthesis_start) →
+ * (artifacts_saved) → run_complete.
  */
 export type RunEvent =
   | { type: "round_start"; round: number }
+  | { type: "draft_start"; modelId: string; round: number; phase: "initial" | "refinement" }
   | { type: "draft_created"; draft: Draft }
+  | {
+      type: "draft_failed";
+      modelId: string;
+      round: number;
+      phase: "initial" | "refinement";
+      error: Error;
+    }
   | { type: "round_complete"; round: number; drafts: Draft[] }
   | { type: "evaluation_start"; judgeModelId: string }
   | { type: "evaluation_complete"; result: EvaluationResult }
+  | { type: "evaluation_failed"; judgeModelId: string; error: Error }
   | { type: "synthesis_start" }
   | { type: "artifacts_saved"; outputDir: string }
   | { type: "run_complete"; winner?: string | undefined };

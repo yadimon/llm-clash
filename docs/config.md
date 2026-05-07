@@ -67,7 +67,7 @@ Supported model entry fields:
 | `inputFlag`         | Flag to prepend before the prompt in arg mode  |
 | `promptPlaceholder` | Placeholder replaced by the prompt             |
 | `filePlaceholder`   | Placeholder replaced by a prompt file path     |
-| `timeoutMs`         | Command timeout                                |
+| `timeoutMs`         | Command timeout, default `600000`              |
 | `shell`             | Run command through the platform shell         |
 
 ## Artifacts And Progress
@@ -76,7 +76,8 @@ Supported model entry fields:
 `--no-save`, to skip `.runs/` output.
 
 Use `onEvent` in the programmatic API to receive progress events for rounds,
-draft creation, evaluation, synthesis, artifact saving, and completion.
+per-model draft start/done/error, evaluation, synthesis, artifact saving, and
+completion.
 
 ## Final Modes
 

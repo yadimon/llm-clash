@@ -67,6 +67,7 @@ export { aggregateEvaluations } from "./core/scoring.js";
 // the per-type documentation.
 export type {
   AggregatedEvaluation,
+  BuiltInEvaluationCriterion,
   CandidateScore,
   Draft,
   EvaluationCriterion,

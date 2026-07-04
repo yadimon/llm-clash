@@ -11,13 +11,9 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Criteria used by judges to score candidate answers.
- *
- * Each criterion produces an integer score 0..10 in the judge's response.
- * The active set is configured per-run via `RunConfig.evaluationCriteria`;
- * the default subset is exported as `DEFAULT_EVALUATION_CRITERIA` below.
+ * Built-in criteria with curated labels and judge guidance (see `prompts.ts`).
  */
-export type EvaluationCriterion =
+export type BuiltInEvaluationCriterion =
   | "accuracy"
   | "completeness"
   | "usefulness"
@@ -25,6 +21,22 @@ export type EvaluationCriterion =
   | "goal_fit"
   | "specificity"
   | "risk_control";
+
+/**
+ * Criteria used by judges to score candidate answers.
+ *
+ * Each criterion produces an integer score 0..10 in the judge's response.
+ * The active set is configured per-run via `RunConfig.evaluationCriteria`;
+ * the default subset is exported as `DEFAULT_EVALUATION_CRITERIA` below.
+ *
+ * Besides the built-in set, any custom identifier matching
+ * `/^[a-z][a-z0-9_-]*$/i` is allowed (e.g. `guardrail_quality`). Custom
+ * criteria get a generated human-readable label (`guardrail_quality` →
+ * "Guardrail Quality") that is used consistently in judge prompts and when
+ * parsing judge responses. The `string & Record<never, never>` intersection
+ * keeps editor autocompletion for the built-in names.
+ */
+export type EvaluationCriterion = BuiltInEvaluationCriterion | (string & Record<never, never>);
 
 /**
  * How the orchestrator should produce the final answer after the last round.

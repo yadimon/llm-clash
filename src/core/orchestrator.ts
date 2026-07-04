@@ -14,8 +14,11 @@
 //                        pick a winner (or detect a tie).
 //   5. FINAL ANSWER    – depending on `finalMode`, return the winner verbatim
 //                        or run a synthesis pass that fuses the best parts.
-//   6. ARTIFACTS       – when enabled, write every draft, evaluation, and the
-//                        final answer to disk for later inspection.
+//   6. ARTIFACTS       – when enabled, drafts and judgments are streamed to
+//                        disk as soon as each round/judge completes (so a
+//                        late crash cannot lose finished work); the final
+//                        pass adds the aggregation, final answer, and
+//                        run.json summary files.
 //
 // Progress is reported through `RunConfig.onEvent` so a CLI or UI can stream
 // updates while the pipeline runs.
@@ -25,9 +28,18 @@ import { randomUUID } from "node:crypto";
 import { evaluationPrompt, initialPrompt, refinementPrompt, synthesisPrompt } from "./prompts.js";
 import { extractImprovedAnswer, parseEvaluationText } from "./parser.js";
 import { aggregateEvaluations, summarizeAggregation } from "./scoring.js";
-import { safeFileName, writeRunArtifacts } from "./storage.js";
+import {
+  resolveRunOutputDir,
+  safeFileName,
+  writeEvaluationArtifact,
+  writeRoundArtifacts,
+  writeRunArtifacts,
+  writeRunMetadata
+} from "./storage.js";
+import type { RequiredRunStorageConfig } from "./storage.js";
 import type {
   Draft,
+  EvaluationCriterion,
   EvaluationResult,
   ModelAdapter,
   RoundResult,
@@ -78,12 +90,25 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
     normalized.onEvent?.(event);
   };
 
+  // Pin the artifact directory BEFORE the run starts so drafts and judgments
+  // can be persisted incrementally — a crash late in the pipeline (a judge, a
+  // synthesis call) must never lose work that already completed.
+  const artifactsDir = normalized.saveArtifacts
+    ? resolveRunOutputDir(normalized.outputDir)
+    : undefined;
+  if (artifactsDir) {
+    await writeRunMetadata(artifactsDir, storageConfig(normalized));
+  }
+
   // ----- Phase 1: initial drafts (round 0) ----------------------------------
   const rounds: RoundResult[] = [];
   throwIfAborted(normalized.signal);
   emit({ type: "round_start", round: 0 });
   let currentDrafts = await createInitialDrafts(normalized, emit);
   rounds.push({ round: 0, drafts: currentDrafts });
+  if (artifactsDir) {
+    await writeRoundArtifacts(artifactsDir, { round: 0, drafts: currentDrafts });
+  }
   emit({ type: "round_complete", round: 0, drafts: currentDrafts });
 
   // ----- Phase 2: refinement rounds -----------------------------------------
@@ -94,12 +119,15 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
     emit({ type: "round_start", round });
     currentDrafts = await refineDrafts(normalized, currentDrafts, round, emit);
     rounds.push({ round, drafts: currentDrafts });
+    if (artifactsDir) {
+      await writeRoundArtifacts(artifactsDir, { round, drafts: currentDrafts });
+    }
     emit({ type: "round_complete", round, drafts: currentDrafts });
   }
 
   // ----- Phase 3 + 4: judges score the final drafts and we aggregate --------
   const finalDrafts = currentDrafts;
-  const evaluations = await evaluateFinalDrafts(normalized, finalDrafts, emit);
+  const evaluations = await evaluateFinalDrafts(normalized, finalDrafts, emit, artifactsDir);
   const aggregatedEvaluation = aggregateEvaluations(
     finalDrafts,
     evaluations,
@@ -123,28 +151,20 @@ export async function runMultiDraftRefinement(config: RunConfig): Promise<RunRes
   );
 
   // ----- Phase 6: optionally persist everything to disk ---------------------
+  // Rounds and evaluations were already streamed to disk as they completed;
+  // this final pass rewrites them (idempotent) and adds the summary files
+  // (aggregated.json, final.md, run.json).
   const finishedAt = new Date().toISOString();
   let outputDir: string | undefined;
-  if (normalized.saveArtifacts) {
+  if (artifactsDir) {
     outputDir = await writeRunArtifacts({
-      config: {
-        task: normalized.task,
-        // Strip the actual adapter instances; we only persist their identity.
-        models: normalized.models.map((model) => ({ id: model.id, label: model.label })),
-        rounds: normalized.rounds,
-        evaluationCriteria: normalized.evaluationCriteria,
-        temperature: normalized.temperature,
-        maxTokens: normalized.maxTokens,
-        finalMode: normalized.finalMode,
-        selfScoreWeight: normalized.selfScoreWeight,
-        peerScoreWeight: normalized.peerScoreWeight
-      },
+      config: storageConfig(normalized),
       rounds,
       finalDrafts,
       evaluations,
       aggregatedEvaluation,
       finalAnswer,
-      outputDir: normalized.outputDir,
+      outputDir: artifactsDir,
       startedAt,
       finishedAt
     });
@@ -199,12 +219,15 @@ function normalizeConfig(config: RunConfig): NormalizedRunConfig {
 
   ensureUniqueModelIds(config.models);
 
+  const evaluationCriteria = config.evaluationCriteria ?? DEFAULT_EVALUATION_CRITERIA;
+  ensureValidEvaluationCriteria(evaluationCriteria);
+
   return {
     task: config.task,
     models: config.models,
     rounds,
     maxRounds,
-    evaluationCriteria: config.evaluationCriteria ?? DEFAULT_EVALUATION_CRITERIA,
+    evaluationCriteria,
     temperature: config.temperature,
     maxTokens: config.maxTokens,
     finalMode: config.finalMode ?? "choose_or_synthesize",
@@ -310,7 +333,8 @@ async function refineDrafts(
 async function evaluateFinalDrafts(
   config: NormalizedRunConfig,
   finalDrafts: Draft[],
-  emit: (event: Parameters<NonNullable<RunConfig["onEvent"]>>[0]) => void
+  emit: (event: Parameters<NonNullable<RunConfig["onEvent"]>>[0]) => void,
+  artifactsDir?: string | undefined
 ): Promise<EvaluationResult[]> {
   return Promise.all(
     config.models.map(async (model) => {
@@ -330,6 +354,11 @@ async function evaluateFinalDrafts(
           config.evaluationCriteria,
           model.id
         );
+        // Persist this judgment immediately so it survives a later crash
+        // (another judge failing, synthesis failing, aborts).
+        if (artifactsDir) {
+          await writeEvaluationArtifact(artifactsDir, result);
+        }
         emit({ type: "evaluation_complete", result });
         return result;
       } catch (error) {
@@ -418,6 +447,53 @@ function findModel(models: ModelAdapter[], modelId: string): ModelAdapter {
     throw new Error(`Model adapter not found for ${modelId}.`);
   }
   return model;
+}
+
+/**
+ * Identifier shape every evaluation criterion must satisfy: starts with a
+ * letter, then letters/digits/underscore/dash. This is exactly the input
+ * `criterionLabel` can turn into a deterministic label, and it keeps the
+ * generated score-line regex in `parser.ts` free of surprises.
+ */
+const CRITERION_ID_PATTERN = /^[a-z][a-z0-9_-]*$/i;
+
+/**
+ * Fail fast on malformed evaluation criteria — at config-load time, BEFORE
+ * any model call has spent time or money. Values come from YAML in the CLI
+ * path, so despite the TypeScript type they can be empty strings, numbers,
+ * or arbitrary junk at runtime.
+ */
+function ensureValidEvaluationCriteria(criteria: EvaluationCriterion[]): void {
+  if (criteria.length === 0) {
+    throw new Error("RunConfig.evaluationCriteria must include at least one criterion.");
+  }
+  for (const criterion of criteria) {
+    if (typeof criterion !== "string" || !CRITERION_ID_PATTERN.test(criterion)) {
+      throw new Error(
+        `Invalid evaluation criterion: ${JSON.stringify(criterion)}. ` +
+          `Criteria must match ${CRITERION_ID_PATTERN} — a letter followed by ` +
+          `letters, digits, "_" or "-" (e.g. "accuracy" or "guardrail_quality").`
+      );
+    }
+  }
+}
+
+/**
+ * The slim, serializable view of the config that goes into `config.yaml` —
+ * live adapter instances are stripped down to `{ id, label }`.
+ */
+function storageConfig(config: NormalizedRunConfig): RequiredRunStorageConfig {
+  return {
+    task: config.task,
+    models: config.models.map((model) => ({ id: model.id, label: model.label })),
+    rounds: config.rounds,
+    evaluationCriteria: config.evaluationCriteria,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+    finalMode: config.finalMode,
+    selfScoreWeight: config.selfScoreWeight,
+    peerScoreWeight: config.peerScoreWeight
+  };
 }
 
 /**

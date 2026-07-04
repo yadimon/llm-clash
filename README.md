@@ -169,7 +169,10 @@ usually the best price/quality trade-off.
 ## Options
 
 All options work on the default `llm-clash` command and on the `refine`
-subcommand.
+subcommand. The `run` subcommand accepts `--save` / `--no-save`,
+`--output <dir>`, `--openrouter-api-key <key>`, and `--quiet`; CLI flags
+override the corresponding YAML fields. Flags for a subcommand go **after**
+the subcommand name (`llm-clash run task.yaml --output ./out`).
 
 | Flag                         | Purpose                                                                    | Default                |
 | ---------------------------- | -------------------------------------------------------------------------- | ---------------------- |
@@ -278,6 +281,23 @@ evaluationCriteria:
   - risk_control
 ```
 
+**Custom criteria.** Any identifier matching `letter` followed by
+letters/digits/`_`/`-` is accepted. Custom criteria get a generated
+human-readable label — `guardrail_quality` becomes `Guardrail Quality` — used
+consistently in the judge prompts and when parsing judge responses, plus the
+neutral judge guidance "Judge this criterion by its name.":
+
+```yaml
+evaluationCriteria:
+  - goal_fit
+  - completeness
+  - guardrail_quality
+  - actionability
+```
+
+Malformed criteria (empty strings, spaces, punctuation) are rejected at
+config-load time, before any model call is made.
+
 ---
 
 ## Output
@@ -301,6 +321,12 @@ When `--save` (default) is on, every run writes a self-contained directory:
 
 `final.md` is what you usually want. `run.json` is great for piping into other
 tools.
+
+Artifacts are written **incrementally**: `config.yaml` + `task.md` at run
+start, each round's drafts as soon as the round completes, and each judge's
+judgment as soon as that judge finishes. If a run crashes late (a judge or the
+synthesis pass fails), everything that completed is already on disk — only
+`aggregated.json`, `final.md`, and `run.json` are written at the very end.
 
 ---
 

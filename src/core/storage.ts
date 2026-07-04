@@ -78,6 +78,67 @@ export type RequiredRunStorageConfig = Pick<
 };
 
 /**
+ * Resolve the artifact directory for a run: the caller-provided path, or a
+ * fresh timestamped directory under `.runs/`. Exposed so the orchestrator
+ * can pin the directory BEFORE the run starts and stream artifacts into it
+ * incrementally.
+ */
+export function resolveRunOutputDir(outputDir?: string | undefined): string {
+  return outputDir ?? join(".runs", timestampForPath(new Date()));
+}
+
+/**
+ * Write the top-level metadata files (`config.yaml` + `task.md`). Called
+ * once at run start so even a crash during round 0 leaves an inspectable
+ * record of what was attempted.
+ */
+export async function writeRunMetadata(
+  outputDir: string,
+  config: RequiredRunStorageConfig
+): Promise<void> {
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(join(outputDir, "config.yaml"), YAML.stringify(config), "utf8");
+  await writeFile(join(outputDir, "task.md"), config.task, "utf8");
+}
+
+/**
+ * Write one round's draft files (one markdown file per model). Called by the
+ * orchestrator as soon as each round completes so a later crash (evaluation,
+ * synthesis) cannot lose finished drafts.
+ */
+export async function writeRoundArtifacts(outputDir: string, round: RoundResult): Promise<void> {
+  const roundDir = join(outputDir, "rounds", `round-${round.round}`);
+  await mkdir(roundDir, { recursive: true });
+  await Promise.all(
+    round.drafts.map((draft) => {
+      return writeFile(
+        join(roundDir, `${safeFileName(draft.modelId)}.md`),
+        draftToMarkdown(draft),
+        "utf8"
+      );
+    })
+  );
+}
+
+/**
+ * Write one judge's raw markdown judgment. Called by the orchestrator as soon
+ * as the judge finishes so completed judgments survive a crash in another
+ * judge or in synthesis.
+ */
+export async function writeEvaluationArtifact(
+  outputDir: string,
+  evaluation: EvaluationResult
+): Promise<void> {
+  const evaluationDir = join(outputDir, "evaluation");
+  await mkdir(evaluationDir, { recursive: true });
+  await writeFile(
+    join(evaluationDir, `${safeFileName(evaluation.judgeModelId)}.md`),
+    evaluation.text,
+    "utf8"
+  );
+}
+
+/**
  * Write the full artifact tree for a run and return the directory it was
  * written to. See the module-level header for the on-disk layout.
  *
@@ -85,42 +146,29 @@ export type RequiredRunStorageConfig = Pick<
  * `evaluation/`) are written in parallel via `Promise.all`; subdirectories
  * themselves are processed sequentially because each one depends on its
  * parent existing.
+ *
+ * Idempotent with respect to the incremental writers above: when the
+ * orchestrator already streamed rounds/evaluations into the same directory,
+ * this rewrites those files with identical content and adds the summary
+ * files (`aggregated.json`, `final.md`, `run.json`).
  */
 export async function writeRunArtifacts(input: WriteRunArtifactsInput): Promise<string> {
-  const outputDir = input.outputDir ?? join(".runs", timestampForPath(new Date()));
-  await mkdir(outputDir, { recursive: true });
+  const outputDir = resolveRunOutputDir(input.outputDir);
 
   // Top-level metadata files.
-  await writeFile(join(outputDir, "config.yaml"), YAML.stringify(input.config), "utf8");
-  await writeFile(join(outputDir, "task.md"), input.config.task, "utf8");
+  await writeRunMetadata(outputDir, input.config);
 
   // Per-round draft files (one markdown file per model per round).
   for (const round of input.rounds) {
-    const roundDir = join(outputDir, "rounds", `round-${round.round}`);
-    await mkdir(roundDir, { recursive: true });
-    await Promise.all(
-      round.drafts.map((draft) => {
-        return writeFile(
-          join(roundDir, `${safeFileName(draft.modelId)}.md`),
-          draftToMarkdown(draft),
-          "utf8"
-        );
-      })
-    );
+    await writeRoundArtifacts(outputDir, round);
   }
 
   // Judge evaluations (raw markdown) plus the aggregated cross-judge JSON.
+  for (const evaluation of input.evaluations) {
+    await writeEvaluationArtifact(outputDir, evaluation);
+  }
   const evaluationDir = join(outputDir, "evaluation");
   await mkdir(evaluationDir, { recursive: true });
-  await Promise.all(
-    input.evaluations.map((evaluation) => {
-      return writeFile(
-        join(evaluationDir, `${safeFileName(evaluation.judgeModelId)}.md`),
-        evaluation.text,
-        "utf8"
-      );
-    })
-  );
   await writeFile(
     join(evaluationDir, "aggregated.json"),
     JSON.stringify(input.aggregatedEvaluation, null, 2),

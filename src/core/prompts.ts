@@ -11,13 +11,13 @@
 // If you change the format here, update the parser regexes too.
 // ---------------------------------------------------------------------------
 
-import type { Draft, EvaluationCriterion } from "./types.js";
+import type { BuiltInEvaluationCriterion, Draft, EvaluationCriterion } from "./types.js";
 
 /**
- * Human-readable label for each criterion, used inside prompts and in the
- * parser to recognize score lines like "Goal Fit: 7/10".
+ * Human-readable label for each built-in criterion, used inside prompts and
+ * in the parser to recognize score lines like "Goal Fit: 7/10".
  */
-const CRITERION_LABELS: Record<EvaluationCriterion, string> = {
+const CRITERION_LABELS: Record<BuiltInEvaluationCriterion, string> = {
   accuracy: "Accuracy",
   completeness: "Completeness",
   usefulness: "Usefulness",
@@ -32,7 +32,7 @@ const CRITERION_LABELS: Record<EvaluationCriterion, string> = {
  * runs and across different judge models. Keep these short — verbose
  * descriptions tend to push judges into over-explaining instead of scoring.
  */
-const CRITERION_DESCRIPTIONS: Record<EvaluationCriterion, string> = {
+const CRITERION_DESCRIPTIONS: Record<BuiltInEvaluationCriterion, string> = {
   accuracy: "Correctness, logical consistency, absence of factual or reasoning errors.",
   completeness: "How fully the answer covers the task.",
   usefulness: "How practical and helpful the answer is for the user.",
@@ -42,9 +42,34 @@ const CRITERION_DESCRIPTIONS: Record<EvaluationCriterion, string> = {
   risk_control: "How well the answer identifies uncertainty, risks, and safeguards."
 };
 
-/** Public lookup so the parser can match score lines against the same labels. */
+/**
+ * Public lookup so the parser can match score lines against the same labels.
+ *
+ * Built-in criteria use the curated labels above. Custom criteria get a
+ * deterministic generated label: the id is split on `_`/`-` and each word is
+ * capitalized (`guardrail_quality` → "Guardrail Quality"). Judge prompts and
+ * the response parser both go through this function, so custom criteria are
+ * matched end-to-end with the same label.
+ */
 export function criterionLabel(criterion: EvaluationCriterion): string {
-  return CRITERION_LABELS[criterion];
+  return CRITERION_LABELS[criterion as BuiltInEvaluationCriterion] ?? humanizeCriterion(criterion);
+}
+
+/** Judge guidance for a criterion; custom criteria get a neutral fallback. */
+function criterionDescription(criterion: EvaluationCriterion): string {
+  return (
+    CRITERION_DESCRIPTIONS[criterion as BuiltInEvaluationCriterion] ??
+    "Judge this criterion by its name."
+  );
+}
+
+/** `guardrail_quality` / `guardrail-quality` → "Guardrail Quality". */
+function humanizeCriterion(criterion: string): string {
+  return criterion
+    .split(/[_-]+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**
@@ -139,7 +164,7 @@ export function evaluationPrompt(
   const criteriaText = criteria
     .map((criterion, index) => {
       return `${index + 1}. ${criterionLabel(criterion)}
-   ${CRITERION_DESCRIPTIONS[criterion]}`;
+   ${criterionDescription(criterion)}`;
     })
     .join("\n\n");
 

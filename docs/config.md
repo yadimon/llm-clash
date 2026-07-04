@@ -70,10 +70,39 @@ Supported model entry fields:
 | `timeoutMs`         | Command timeout, default `600000`              |
 | `shell`             | Run command through the platform shell         |
 
+## Evaluation Criteria
+
+`evaluationCriteria` defaults to `accuracy`, `completeness`, `usefulness`,
+`clarity`, `goal_fit`. The built-in extras are `specificity` and
+`risk_control`.
+
+Custom criteria are supported: any identifier that starts with a letter and
+continues with letters, digits, `_`, or `-` (for example
+`guardrail_quality`). Custom criteria get a generated label
+(`guardrail_quality` → `Guardrail Quality`) that is used in the judge prompt
+and matched when parsing judge responses, with the neutral guidance "Judge
+this criterion by its name." Malformed criteria are rejected at config-load
+time, before any model call.
+
+```yaml
+evaluationCriteria:
+  - goal_fit
+  - completeness
+  - guardrail_quality
+```
+
 ## Artifacts And Progress
 
 `saveArtifacts` defaults to `true`. Set it to `false`, or pass CLI
-`--no-save`, to skip `.runs/` output.
+`--no-save`, to skip `.runs/` output. `--output <dir>` (also available on the
+`run` subcommand, after the subcommand name) overrides the artifact
+directory; it wins over `outputDir` from the YAML.
+
+Artifacts are saved incrementally: `config.yaml` and `task.md` at run start,
+every round's drafts when the round completes, and every judgment when the
+judge finishes. A crash during evaluation or synthesis leaves all completed
+drafts and judgments on disk; `aggregated.json`, `final.md`, and `run.json`
+are written at the end of a successful run.
 
 Use `onEvent` in the programmatic API to receive progress events for rounds,
 per-model draft start/done/error, evaluation, synthesis, artifact saving, and

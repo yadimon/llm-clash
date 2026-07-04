@@ -85,6 +85,50 @@ Better fit.`,
     expect(evaluation.candidateScores[1]?.total).toBe(9);
   });
 
+  it("parses custom criteria via their generated labels", () => {
+    const evaluation = parseEvaluationText(
+      `# Evaluation
+
+## Candidate 1
+Goal Fit: 8/10
+Guardrail Quality: 6/10
+Actionability: 7/10
+
+## Candidate 2
+Goal Fit: 9/10
+Guardrail Quality: 5/10
+Actionability: 4/10
+
+# Best Candidate
+
+Candidate 1
+
+# Reason
+
+Safer guidance.`,
+      drafts,
+      ["goal_fit", "guardrail_quality", "actionability"],
+      "judge"
+    );
+
+    expect(evaluation.candidateScores[0]?.scores).toEqual({
+      goal_fit: 8,
+      guardrail_quality: 6,
+      actionability: 7
+    });
+    expect(evaluation.candidateScores[1]?.scores).toEqual({
+      goal_fit: 9,
+      guardrail_quality: 5,
+      actionability: 4
+    });
+    expect(evaluation.bestCandidateId).toBe("candidate-a");
+  });
+
+  it("parses custom-criterion score lines written with underscores", () => {
+    const parsed = parseCandidateBlock("guardrail_quality: 7/10", ["guardrail_quality"]);
+    expect(parsed.scores.guardrail_quality).toBe(7);
+  });
+
   it("extracts improved answer and changes", () => {
     expect(
       extractImprovedAnswer(`# Improved Answer

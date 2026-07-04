@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/llm-clash",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Text-only multi-draft iterative refinement for producing stronger answers with multiple model adapters.",
   "type": "module",
   "license": "MIT",

@@ -73,7 +73,7 @@ high reasoning effort:
 
 ```bash
 npx @yadimon/llm-clash cc codex "Make a step-by-step plan to add OAuth2 login."
-# → claude-code:claude-opus-4-7-high  +  codex:gpt-5.5-high
+# → claude-code:opus-high  +  codex:gpt-5.5-high
 ```
 
 `opencode` has no curated default (too many models) — pass an explicit
@@ -138,20 +138,20 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 Each model on the command line is a short string with a provider prefix:
 
-| Spec                                     | What it is                                      | Notes                                         |
-| ---------------------------------------- | ----------------------------------------------- | --------------------------------------------- |
-| `cc`                                     | Shortcut for `claude-code:claude-opus-4-7-high` | bare-name shortcut                            |
-| `codex`                                  | Shortcut for `codex:gpt-5.5-high`               | bare-name shortcut                            |
-| `gemini`                                 | Shortcut for `gemini-cli:flash`                 | bare-name shortcut                            |
-| `openai:gpt-4.1`                         | OpenAI Chat Completions                         | needs `OPENAI_API_KEY`                        |
-| `anthropic:claude-sonnet-4-5`            | Anthropic Messages API                          | needs `ANTHROPIC_API_KEY`                     |
-| `openrouter:anthropic/claude-3.5-sonnet` | OpenRouter (any of its models)                  | needs `OPENROUTER_API_KEY`                    |
-| `google:gemini-2.5-pro`                  | Google Gemini OpenAI-compat endpoint            | needs `GOOGLE_API_KEY`                        |
-| `claude-code:opus`                       | Local `claude` CLI                              | uses your existing Claude Code login          |
-| `codex:gpt-5.3-medium`                   | Local `codex` CLI                               | uses your existing Codex login                |
-| `gemini-cli:flash`                       | Local `gemini` CLI                              | uses your existing Gemini CLI login           |
-| `opencode:anthropic/claude-3.5-sonnet`   | Local `opencode` CLI                            | uses opencode's configured backends           |
-| `command:<id>:<command>[:arg…]`          | Any local command-line LLM                      | for richer args, prefer a YAML config (below) |
+| Spec                                     | What it is                           | Notes                                         |
+| ---------------------------------------- | ------------------------------------ | --------------------------------------------- |
+| `cc`                                     | Shortcut for `claude-code:opus-high` | bare-name shortcut                            |
+| `codex`                                  | Shortcut for `codex:gpt-5.5-high`    | bare-name shortcut                            |
+| `gemini`                                 | Shortcut for `gemini-cli:flash`      | bare-name shortcut                            |
+| `openai:gpt-4.1`                         | OpenAI Chat Completions              | needs `OPENAI_API_KEY`                        |
+| `anthropic:claude-sonnet-4-5`            | Anthropic Messages API               | needs `ANTHROPIC_API_KEY`                     |
+| `openrouter:anthropic/claude-3.5-sonnet` | OpenRouter (any of its models)       | needs `OPENROUTER_API_KEY`                    |
+| `google:gemini-2.5-pro`                  | Google Gemini OpenAI-compat endpoint | needs `GOOGLE_API_KEY`                        |
+| `claude-code:opus`                       | Local `claude` CLI                   | uses your existing Claude Code login          |
+| `codex:gpt-5.3-medium`                   | Local `codex` CLI                    | uses your existing Codex login                |
+| `gemini-cli:flash`                       | Local `gemini` CLI                   | uses your existing Gemini CLI login           |
+| `opencode:anthropic/claude-3.5-sonnet`   | Local `opencode` CLI                 | uses opencode's configured backends           |
+| `command:<id>:<command>[:arg…]`          | Any local command-line LLM           | for richer args, prefer a YAML config (below) |
 
 **Reasoning effort suffix.** Local agent specs accept a trailing
 `-low / -medium / -high / -xhigh / -max`:

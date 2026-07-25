@@ -37,8 +37,8 @@ import type { ModelAdapter } from "../core/types.js";
  * provider front-ends dozens) — we surface a clear error instead of guessing.
  */
 const BARE_SHORTCUTS: Record<string, string> = {
-  cc: "claude-code:claude-opus-4-7-high",
-  "claude-code": "claude-code:claude-opus-4-7-high",
+  cc: "claude-code:opus-high",
+  "claude-code": "claude-code:opus-high",
   codex: "codex:gpt-5.5-high",
   gemini: "gemini-cli:flash",
   "gemini-cli": "gemini-cli:flash"

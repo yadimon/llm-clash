@@ -33,13 +33,10 @@ describe("preferences", () => {
 
   it("round-trips defaultModels through save and load", async () => {
     const { loadPreferences, savePreferences } = await import("../src/cli/preferences.js");
-    savePreferences({ defaultModels: ["codex:gpt-5.5-high", "claude-code:claude-opus-4-7-high"] });
+    savePreferences({ defaultModels: ["codex:gpt-5.5-high", "claude-code:opus-high"] });
 
     const loaded = loadPreferences();
-    expect(loaded.defaultModels).toEqual([
-      "codex:gpt-5.5-high",
-      "claude-code:claude-opus-4-7-high"
-    ]);
+    expect(loaded.defaultModels).toEqual(["codex:gpt-5.5-high", "claude-code:opus-high"]);
     expect(loaded.savedAt).toBeTypeOf("string");
   });
 

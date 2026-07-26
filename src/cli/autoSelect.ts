@@ -17,17 +17,9 @@
 // ---------------------------------------------------------------------------
 
 import { createInterface } from "node:readline/promises";
+import { hasCuratedDefault, topSpecForAgent } from "./agentCatalog.js";
 import { detectInstalledAgents, PRIORITY, type LocalAgentName } from "./detection.js";
 import { loadPreferences, savePreferences } from "./preferences.js";
-
-/** Spec strings for the auto-selected top model of each local agent. */
-const TOP_SPEC_FOR_AGENT: Record<LocalAgentName, string> = {
-  codex: "codex:gpt-5.6-sol-high",
-  "claude-code": "claude-code:opus-high",
-  "gemini-cli": "gemini-cli:flash",
-  // No curated default for opencode — caller must error or prompt.
-  opencode: ""
-};
 
 export type AutoSelectResult = {
   /** Spec strings ready to feed into `adapterFromSpec`. */
@@ -72,7 +64,7 @@ export async function autoSelectModels(): Promise<AutoSelectResult> {
   // don't want to prompt for a model in the auto path. If picking opencode
   // is unavoidable (only opencode + one other installed), surface a clear
   // hint instead of guessing.
-  const candidates = installed.filter((agent) => TOP_SPEC_FOR_AGENT[agent] !== "");
+  const candidates = installed.filter(hasCuratedDefault);
   if (candidates.length < 2) {
     throw new Error(
       "Auto-selection requires two CLIs with curated default models " +
@@ -81,7 +73,7 @@ export async function autoSelectModels(): Promise<AutoSelectResult> {
     );
   }
   const picked = candidates.slice(0, 2);
-  const specs = picked.map((agent) => TOP_SPEC_FOR_AGENT[agent]);
+  const specs = picked.map(topSpecForAgent);
 
   if (!process.stdin.isTTY) {
     console.error(`[auto] using ${specs.join(", ")} (non-TTY input — no prompt)`);

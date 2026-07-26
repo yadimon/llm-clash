@@ -28,20 +28,26 @@ import { anthropic } from "../adapters/anthropic.js";
 import { commandAdapter } from "../adapters/commandAdapter.js";
 import { openaiCompatible } from "../adapters/openaiCompatible.js";
 import type { ModelAdapter } from "../core/types.js";
+import { topSpecForAgent } from "./agentCatalog.js";
+import type { LocalAgentName } from "./detection.js";
 
 /**
  * Bare-name shortcuts for the most common local-CLI specs. Typing just `cc`
  * on the command line expands to the full top-model spec for that provider.
  *
+ * The mapping is name → agent rather than name → spec so membership tests stay
+ * free of I/O; the spec itself is resolved lazily, because agents like codex
+ * only reveal their best available model at runtime (see agentCatalog).
+ *
  * `opencode` is intentionally absent: it has no curated default model (the
  * provider front-ends dozens) — we surface a clear error instead of guessing.
  */
-const BARE_SHORTCUTS: Record<string, string> = {
-  cc: "claude-code:opus-high",
-  "claude-code": "claude-code:opus-high",
-  codex: "codex:gpt-5.6-sol-high",
-  gemini: "gemini-cli:flash",
-  "gemini-cli": "gemini-cli:flash"
+const BARE_SHORTCUT_AGENT: Record<string, LocalAgentName> = {
+  cc: "claude-code",
+  "claude-code": "claude-code",
+  codex: "codex",
+  gemini: "gemini-cli",
+  "gemini-cli": "gemini-cli"
 };
 
 /** Bare names that should produce an explicit error instead of a default. */
@@ -73,7 +79,7 @@ export const KNOWN_SPEC_PREFIXES = [
  * through to the auto-selection flow.
  */
 export function looksLikeModelSpec(value: string): boolean {
-  if (BARE_SHORTCUTS[value] !== undefined || BARE_NEEDS_MODEL.has(value)) {
+  if (BARE_SHORTCUT_AGENT[value] !== undefined || BARE_NEEDS_MODEL.has(value)) {
     return true;
   }
   return KNOWN_SPEC_PREFIXES.some((prefix) => value.startsWith(prefix));
@@ -84,8 +90,9 @@ export function looksLikeModelSpec(value: string): boolean {
  * Throws for bare names that have no curated default (`opencode`).
  */
 function expandBareShortcut(spec: string): string {
-  if (BARE_SHORTCUTS[spec] !== undefined) {
-    return BARE_SHORTCUTS[spec];
+  const agent = BARE_SHORTCUT_AGENT[spec];
+  if (agent !== undefined) {
+    return topSpecForAgent(agent);
   }
   if (BARE_NEEDS_MODEL.has(spec)) {
     throw new Error(
@@ -211,7 +218,7 @@ export function adapterFromSpec(rawSpec: string, options: ModelSpecOptions = {})
  *   --allowedTools Read,LS,Grep,Glob – read-only inspection of the cwd
  *
  * Reasoning effort is appended as `--effort` when the spec includes a
- * `-low / -medium / -high / -xhigh / -max` suffix (e.g. `opus-high`).
+ * `-low / -medium / -high / -xhigh / -max / -ultra` suffix (e.g. `opus-high`).
  */
 function claudeCodeAdapter(spec: string): ModelAdapter {
   // Accept both "claude-code:" and short-form "claude:" prefixes.
@@ -349,14 +356,14 @@ function useShellForLocalCli(): boolean {
 
 /**
  * Strip an optional reasoning-effort suffix (`-low`, `-medium`, `-high`,
- * `-xhigh`, `-max`) from a spec, returning the model name and the effort
+ * `-xhigh`, `-max`, `-ultra`) from a spec, returning the model name and the effort
  * separately. Examples:
  *   "opus"           → { model: "opus" }
  *   "opus-high"      → { model: "opus", effort: "high" }
  *   "gpt-5.3-codex"  → { model: "gpt-5.3-codex" }       (no match)
  */
 function parseLocalSpec(value: string): ParsedLocalSpec {
-  const effortMatch = value.match(/^(.*?)-(low|medium|high|xhigh|max)$/i);
+  const effortMatch = value.match(/^(.*?)-(low|medium|high|xhigh|max|ultra)$/i);
   if (effortMatch?.[1] && effortMatch[2]) {
     return { model: effortMatch[1], effort: effortMatch[2] };
   }
@@ -431,11 +438,11 @@ function normalizeGeminiModel(model: string): string {
  */
 function normalizeEffort(effort: string): string {
   const normalized = effort.toLowerCase();
-  if (normalized === "xhigh" || normalized === "max") {
+  if (normalized === "xhigh" || normalized === "max" || normalized === "ultra") {
     return normalized;
   }
   if (normalized === "low" || normalized === "medium" || normalized === "high") {
     return normalized;
   }
-  throw new Error(`Unsupported effort "${effort}". Use low, medium, high, xhigh, or max.`);
+  throw new Error(`Unsupported effort "${effort}". Use low, medium, high, xhigh, max, or ultra.`);
 }

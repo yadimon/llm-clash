@@ -34,6 +34,7 @@ describe("adapterFromSpec", () => {
     expect(adapterFromSpec("claude-code:sonnet-low").id).toBe("claude-code:sonnet-low");
     expect(adapterFromSpec("codex:gpt-5.4-mini-low").id).toBe("codex:gpt-5.4-mini-low");
     expect(adapterFromSpec("codex:gpt-5.6-sol-high").id).toBe("codex:gpt-5.6-sol-high");
+    expect(adapterFromSpec("codex:gpt-5.6-sol-ultra").id).toBe("codex:gpt-5.6-sol-ultra");
     expect(adapterFromSpec("codex:default-low").id).toBe("codex:default-low");
     expect(adapterFromSpec("gemini-cli:flash").id).toBe("gemini-cli:flash");
     expect(adapterFromSpec("open-code:openrouter/openrouter/free").id).toBe(
@@ -44,7 +45,7 @@ describe("adapterFromSpec", () => {
   it("expands bare-name shortcuts to full local-CLI specs", () => {
     expect(adapterFromSpec("cc").id).toBe("claude-code:opus-high");
     expect(adapterFromSpec("claude-code").id).toBe("claude-code:opus-high");
-    expect(adapterFromSpec("codex").id).toBe("codex:gpt-5.6-sol-high");
+    expect(adapterFromSpec("codex").id).toBe("codex:gpt-5.5-high");
     expect(adapterFromSpec("gemini").id).toBe("gemini-cli:flash");
     expect(adapterFromSpec("gemini-cli").id).toBe("gemini-cli:flash");
   });

@@ -22,7 +22,7 @@ import { loadPreferences, savePreferences } from "./preferences.js";
 
 /** Spec strings for the auto-selected top model of each local agent. */
 const TOP_SPEC_FOR_AGENT: Record<LocalAgentName, string> = {
-  codex: "codex:gpt-5.5-high",
+  codex: "codex:gpt-5.6-sol-high",
   "claude-code": "claude-code:opus-high",
   "gemini-cli": "gemini-cli:flash",
   // No curated default for opencode — caller must error or prompt.

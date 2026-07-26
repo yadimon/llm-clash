@@ -39,7 +39,7 @@ import type { ModelAdapter } from "../core/types.js";
 const BARE_SHORTCUTS: Record<string, string> = {
   cc: "claude-code:opus-high",
   "claude-code": "claude-code:opus-high",
-  codex: "codex:gpt-5.5-high",
+  codex: "codex:gpt-5.6-sol-high",
   gemini: "gemini-cli:flash",
   "gemini-cli": "gemini-cli:flash"
 };
@@ -385,9 +385,15 @@ function normalizeClaudeModel(model: string): string {
 /**
  * Normalize Codex model aliases — currently only fixes the `gpt5.3` /
  * `gpt-5.3` spelling variants. Anything else is forwarded as-is.
+ *
+ * Note there is no bare `gpt-5.6`: the 5.6 generation ships only as
+ * `gpt-5.6-sol`, so the dotless spelling maps onto that id.
  */
 function normalizeCodexModel(model: string): string {
   const normalized = model.toLowerCase();
+  if (normalized === "gpt5.6-sol" || normalized === "gpt-5.6-sol") {
+    return "gpt-5.6-sol";
+  }
   if (normalized === "gpt5.3" || normalized === "gpt-5.3") {
     return "gpt-5.3";
   }

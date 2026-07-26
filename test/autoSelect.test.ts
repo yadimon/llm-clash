@@ -47,7 +47,7 @@ describe("autoSelectModels", () => {
 
     const result = await autoSelectModels();
 
-    expect(result.specs).toEqual(["codex:gpt-5.5-high", "claude-code:opus-high"]);
+    expect(result.specs).toEqual(["codex:gpt-5.6-sol-high", "claude-code:opus-high"]);
     expect(result.fromPreferences).toBe(false);
   });
 
@@ -57,13 +57,13 @@ describe("autoSelectModels", () => {
 
     const result = await autoSelectModels();
 
-    expect(result.specs).toEqual(["codex:gpt-5.5-high", "gemini-cli:flash"]);
+    expect(result.specs).toEqual(["codex:gpt-5.6-sol-high", "gemini-cli:flash"]);
   });
 
   it("uses a saved selection when every agent is still installed", async () => {
     installed = ["codex", "claude-code"];
     savedPrefs = {
-      defaultModels: ["codex:gpt-5.5-high", "claude-code:opus-high"]
+      defaultModels: ["codex:gpt-5.6-sol-high", "claude-code:opus-high"]
     };
     const { autoSelectModels } = await import("../src/cli/autoSelect.js");
 
@@ -76,7 +76,7 @@ describe("autoSelectModels", () => {
   it("ignores a saved selection if the agents are no longer installed", async () => {
     installed = ["claude-code", "gemini-cli"];
     savedPrefs = {
-      defaultModels: ["codex:gpt-5.5-high", "claude-code:opus-high"]
+      defaultModels: ["codex:gpt-5.6-sol-high", "claude-code:opus-high"]
     };
     const { autoSelectModels } = await import("../src/cli/autoSelect.js");
 

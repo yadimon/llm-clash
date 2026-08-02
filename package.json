@@ -1,7 +1,7 @@
 {
   "name": "@yadimon/llm-clash",
   "version": "0.4.0",
-  "description": "Text-only multi-draft iterative refinement for producing stronger answers with multiple model adapters.",
+  "description": "CLI and TypeScript library that has multiple LLMs draft, refine, and judge one final answer.",
   "type": "module",
   "license": "MIT",
   "keywords": [

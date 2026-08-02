@@ -1,13 +1,20 @@
 # llm-clash
 
-> Get a single polished text answer by making several LLMs draft, refine each
-> other's drafts, judge the results, and either pick the winner or fuse the best
-> parts together.
+[![npm](https://img.shields.io/npm/v/@yadimon/llm-clash)](https://www.npmjs.com/package/@yadimon/llm-clash)
+[![CI](https://github.com/yadimon/llm-clash/actions/workflows/ci.yml/badge.svg)](https://github.com/yadimon/llm-clash/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@yadimon/llm-clash)](LICENSE)
 
-`llm-clash` is a console tool (and a small Node.js library) for **multi-draft
-iterative refinement**. You give it one task — a plan, a research note, an
-architecture decision, a code review, anything text — and a list of model
-adapters. It then runs:
+> Ask several LLMs to solve the same text task, improve their answers after
+> reading the other drafts, and judge the result. Get one final answer plus the
+> evidence behind it.
+
+`llm-clash` is a CLI and TypeScript library for decisions where a second model
+is worth the extra time: code reviews, architecture plans, research briefs,
+migrations, and other open-ended text work. It can use your existing Claude
+Code, Codex, Gemini CLI, and OpenCode logins, hosted model APIs, or any custom
+command/OpenAI-compatible endpoint.
+
+You provide one task and a list of model adapters. `llm-clash` then runs:
 
 ```
 task
@@ -17,14 +24,30 @@ task
   → one final answer (winner or synthesis)
 ```
 
-The result is a noticeably stronger answer than any single model produces on
-its own, with full traceability to every intermediate draft.
+The goal is a better-supported answer than a single one-shot completion, with
+every draft and judgment available for inspection. The models can still agree
+on something wrong; this is deliberation, not a factual guarantee.
+
+## Is this the right tool?
+
+| You want to…                                                    | Start with…                                                                        |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Get a read-only Claude + Codex review of the current repository | `llm-clash cc codex "Review the current uncommitted changes."`                     |
+| Run a repeatable review or decision workflow                    | A [YAML config](#yaml-config) committed with your project                          |
+| Add multi-model deliberation to a Node.js application           | The [Library API](#library-api)                                                    |
+| Compare prompt quality across a test suite                      | An LLM evaluation tool such as [Promptfoo](https://github.com/promptfoo/promptfoo) |
+| Route production requests to the first healthy/cheap provider   | A runtime model router; `llm-clash` deliberately makes several calls per task      |
+
+Use it for work where diverse drafts and an audit trail justify higher latency
+and token usage. It is usually overkill for short factual questions, interactive
+chat latency, or high-volume request routing.
 
 ---
 
 ## Install
 
-`llm-clash` is a CLI you call from your terminal, so install it **globally**:
+Requires Node.js 20 or newer. `llm-clash` is a CLI you call from your terminal,
+so install it **globally**:
 
 ```bash
 npm install -g @yadimon/llm-clash
@@ -58,7 +81,7 @@ priority (`codex` > `claude-code` > `gemini-cli` > `opencode`), shows the
 selection once, and asks for confirmation:
 
 ```bash
-npx @yadimon/llm-clash "Plane die Migration einer Express-App auf Fastify."
+npx @yadimon/llm-clash "Plan the migration of an Express app to Fastify."
 ```
 
 Press `Y` to use it for this run, `s` to save the choice to
@@ -73,8 +96,21 @@ high reasoning effort:
 
 ```bash
 npx @yadimon/llm-clash cc codex "Make a step-by-step plan to add OAuth2 login."
-# → claude-code:opus-high  +  codex:gpt-5.6-sol-high
+# → claude-code:opus-high + the best Codex model available to your account
 ```
+
+Run the same pair inside a repository for a practical, read-only code review:
+
+```bash
+cd my-project
+llm-clash cc codex "Review the current uncommitted changes. Focus on bugs, regressions, and missing tests."
+```
+
+The built-in local-agent adapters inherit the current directory and restrict
+Claude Code, Codex, Gemini CLI, and OpenCode to read-only inspection. They can
+read the repository but cannot apply the suggested fixes. Hosted API models do
+not have repository access; they only receive the text assembled by the
+refinement workflow.
 
 **The top model is resolved per account, not hard-coded.** `cc` uses the
 `opus` alias, which the `claude` CLI already points at the current Opus.
@@ -143,6 +179,25 @@ A minimal `.env` next to where you run the command:
 OPENROUTER_API_KEY=sk-or-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+### Privacy, cost, and failure behavior
+
+- Every configured model receives the original task and, during refinement or
+  judging, text produced by the other models. Do not include secrets or private
+  source unless every selected provider is allowed to process it.
+- Local CLI adapters reuse those tools' existing logins. "Local CLI" describes
+  how the process is launched; the underlying tool may still send content to
+  its hosted service.
+- A run makes one call per model for the initial draft, one per refinement
+  round, and one per judge, plus an optional synthesis call. With two models and
+  the default two rounds, expect eight model calls plus synthesis when needed.
+- If any model call fails, the run fails; there is no hidden provider fallback
+  or automatic retry. Completed drafts and judgments are saved incrementally,
+  so inspect the run directory before retrying.
+- Saved `.runs/` directories contain the task, drafts, judgments, and final
+  answer. Add `.runs/` to your project's `.gitignore`, choose a dedicated
+  `--output` directory, or use `--no-save` when those artifacts should not
+  remain on disk.
 
 ---
 
@@ -403,9 +458,19 @@ each exported type has a JSDoc block that shows up in your editor's tooltips.
 
 - **`OPENROUTER_API_KEY is required …`** — set the env var, add it to a local
   `.env`, or pass `--openrouter-api-key <key>`.
+- **A long task breaks shell parsing or exceeds the command-line limit** — put
+  the task in a [YAML config](#yaml-config) and run `llm-clash run task.yaml`.
+  Built-in local agents receive the expanded refinement prompts over stdin,
+  rather than as one enormous command-line argument.
+- **A local agent times out after 10 minutes** — full draft/refine/judge runs
+  are intentionally bounded. Use fewer rounds or a faster model. For a custom
+  command model, set `timeoutMs` in YAML.
 - **`Command failed with exit code …`** — local CLI agents usually print the
   real cause to stderr; the message is included in the error. Most often this
   is an outdated/missing CLI, not configured login, or a wrong model name.
+- **The command looks idle** — progress is written to stderr as each model
+  starts and finishes. Remove `--quiet` to see it; the final answer stays on
+  stdout so it can still be redirected.
 - **Identical answers from every model** — your task is probably too narrow or
   too short. Multi-draft refinement shines on open-ended planning, design, and
   comparison tasks; for `2 + 2` it's overkill.

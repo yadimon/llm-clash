@@ -1,6 +1,6 @@
 {
   "name": "@yadimon/llm-clash",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "CLI and TypeScript library that has multiple LLMs draft, refine, and judge one final answer.",
   "type": "module",
   "license": "MIT",

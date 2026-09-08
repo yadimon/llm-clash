@@ -528,6 +528,10 @@ publish.
 
 ### Contributing
 
+Development and the full test suite require Node.js 22.12 or newer (Vitest 5).
+CI also installs the packed package into fresh consumer projects on Node.js
+20, 22 and 24, checking CLI help, version output and library imports.
+
 PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) — keep changes scoped,
 update docs/examples when public behavior changes, and run `npm run check`
 before requesting review.

@@ -82,7 +82,7 @@
     "release:major": "node scripts/release.mjs major"
   },
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^14.0.3",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

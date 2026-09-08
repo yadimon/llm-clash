@@ -17,4 +17,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: npm run pack
+      - run: mkdir -p packed && npm pack --pack-destination packed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: packed/*.tgz
+          if-no-files-found: error
+
+  packed-runtime:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: packed
+      - run: node scripts/smoke-packed.mjs
